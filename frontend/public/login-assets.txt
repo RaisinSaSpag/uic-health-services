@@ -1,0 +1,11 @@
+Login page image assets
+
+Add your custom files in this same folder (frontend/public):
+
+1) login-background.png
+   - Used as the full-page login background image.
+
+2) login-logo.png (optional)
+   - Used as the circular seal/logo above the title.
+
+After adding or replacing these files, refresh the browser.
