@@ -30,4 +30,19 @@ class AuditLogService
             'user_agent' => $request?->userAgent(),
         ]);
     }
+
+    /**
+     * Convenience wrapper that accepts a user ID instead of a User model.
+     */
+    public function record(
+        int $actorId,
+        string $action,
+        string $entityType,
+        ?int $entityId = null,
+        array $newValues = [],
+    ): AuditLog {
+        $actor = User::find($actorId);
+
+        return $this->log($actor, $action, $entityType, $entityId, null, $newValues ?: null);
+    }
 }
