@@ -1,0 +1,109 @@
+<?php
+
+namespace App\Http\Controllers\Api\V1;
+
+use App\Http\Controllers\Controller;
+use App\Services\Clinic\InventoryService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use RuntimeException;
+
+class InventoryController extends Controller
+{
+    public function __construct(private readonly InventoryService $inventoryService)
+    {
+    }
+
+    public function stockIn(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'medicine_id' => ['required', 'integer', 'min:1'],
+            'campus_id' => ['required', 'integer', 'min:1'],
+            'quantity' => ['required', 'integer', 'min:1'],
+            'date_received' => ['required', 'date_format:Y-m-d'],
+            'expiration_date' => ['required', 'date_format:Y-m-d', 'after:date_received'],
+        ]);
+
+        try {
+            $stockIn = $this->inventoryService->stockIn($validated, $request->user()->id);
+
+            return response()->json($stockIn->load(['medicine', 'campus']), 201);
+        } catch (RuntimeException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
+    }
+
+    public function dispense(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'stock_in_id' => ['required', 'integer', 'min:1'],
+            'quantity_dispensed' => ['required', 'integer', 'min:1'],
+        ]);
+
+        try {
+            $stockOut = $this->inventoryService->dispense($validated, $request->user()->id);
+
+            return response()->json($stockOut->load(['stockIn.medicine']), 201);
+        } catch (RuntimeException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
+    }
+
+    public function archive(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'stock_in_id' => ['required', 'integer', 'min:1'],
+            'quantity' => ['required', 'integer', 'min:1'],
+            'reason' => ['required', 'string', 'max:255'],
+        ]);
+
+        try {
+            $archived = $this->inventoryService->archive($validated, $request->user()->id);
+
+            return response()->json($archived->load(['stockIn.medicine']), 201);
+        } catch (RuntimeException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
+    }
+
+    public function available(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'campus_id' => ['required', 'integer', 'min:1'],
+        ]);
+
+        $stock = $this->inventoryService->availableStockForCampus((int) $validated['campus_id']);
+
+        return response()->json($stock);
+    }
+
+    public function lowStock(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'campus_id' => ['required', 'integer', 'min:1'],
+            'threshold' => ['nullable', 'integer', 'min:1', 'max:10000'],
+        ]);
+
+        $stock = $this->inventoryService->lowStock(
+            (int) $validated['campus_id'],
+            (int) ($validated['threshold'] ?? 50)
+        );
+
+        return response()->json($stock);
+    }
+
+    public function expiringSoon(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'campus_id' => ['required', 'integer', 'min:1'],
+            'days_ahead' => ['nullable', 'integer', 'min:1', 'max:365'],
+        ]);
+
+        $stock = $this->inventoryService->expiringSoon(
+            (int) $validated['campus_id'],
+            (int) ($validated['days_ahead'] ?? 30)
+        );
+
+        return response()->json($stock);
+    }
+}
