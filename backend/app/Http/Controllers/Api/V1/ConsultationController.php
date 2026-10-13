@@ -44,13 +44,13 @@ class ConsultationController extends Controller
     public function store(Request $request): JsonResponse
     {
         $actorRole = strtolower((string) $request->user()?->role?->name);
-        $requiresPatientId = in_array($actorRole, ['nurse', 'admin'], true);
+        $isStaff = in_array($actorRole, ['nurse', 'admin'], true);
 
         $validated = $request->validate([
-            'patient_id' => [$requiresPatientId ? 'required' : 'nullable', 'integer', 'min:1'],
+            'patient_id' => [$isStaff ? 'required' : 'nullable', 'integer', 'min:1'],
             'consultation_type' => ['required', 'in:walk_in,scheduled'],
-            'consultation_date' => ['required', 'date_format:Y-m-d'],
-            'consultation_time' => ['required', 'date_format:H:i'],
+            'consultation_date' => [$isStaff ? 'required' : 'nullable', 'date_format:Y-m-d'],
+            'consultation_time' => [$isStaff ? 'required' : 'nullable', 'date_format:H:i'],
             'blood_pressure' => ['nullable', 'string', 'max:32'],
             'pulse_bpm' => ['nullable', 'integer', 'min:1', 'max:300'],
             'temperature_c' => ['nullable', 'numeric', 'min:25', 'max:45'],
@@ -58,7 +58,7 @@ class ConsultationController extends Controller
             'last_menstrual_period' => ['nullable', 'date_format:Y-m-d'],
             'chief_complaint' => ['required', 'string', 'max:1000'],
             'symptoms' => ['nullable', 'string', 'max:2000'],
-            'diagnosis' => ['required', 'string', 'max:1000'],
+            'diagnosis' => [$isStaff ? 'required' : 'nullable', 'string', 'max:1000'],
             'remarks' => ['nullable', 'string', 'max:3000'],
             'referred_to_doctor' => ['nullable', 'boolean'],
         ]);

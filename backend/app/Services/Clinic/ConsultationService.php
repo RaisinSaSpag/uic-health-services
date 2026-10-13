@@ -40,9 +40,11 @@ class ConsultationService
 
         $referredToDoctor = (bool) ($payload['referred_to_doctor'] ?? false);
 
+        $isStaff = in_array($role, ['nurse', 'admin'], true);
+
         $status = match (true) {
             $referredToDoctor => 'referred_to_doctor',
-            $isWalkIn => 'nurse_assessment',
+            $isStaff && $isWalkIn => 'nurse_assessment',
             default => 'pending_consultation',
         };
 

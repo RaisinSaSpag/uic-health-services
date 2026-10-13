@@ -36,6 +36,7 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/patients', [PatientController::class, 'store']);
             Route::get('/patients/me', [PatientController::class, 'me']);
             Route::patch('/patients/me', [PatientController::class, 'updateMe']);
+            Route::post('/consultations', [ConsultationController::class, 'store']);
         });
 
         Route::middleware('role:student,employee,nurse,doctor,admin')->group(function (): void {
