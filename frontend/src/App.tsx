@@ -11,12 +11,13 @@ import { LoginPage } from './pages/LoginPage';
 import { NurseAboutPage } from './pages/NurseAboutPage';
 import { NurseConsultationFormPage } from './pages/NurseConsultationFormPage';
 import { NurseConsultationTypePage } from './pages/NurseConsultationTypePage';
+import { NurseInventoryDashboardPage } from './pages/NurseInventoryDashboardPage';
+import { NurseInventoryStocksPage } from './pages/NurseInventoryStocksPage';
 import { NursePatientDetailPage } from './pages/NursePatientDetailPage';
 import { NursePrintPrescriptionPage } from './pages/NursePrintPrescriptionPage';
 import { NurseQueuePage } from './pages/NurseQueuePage';
-import { NurseReferralsPage } from './pages/NurseReferralsPage';
-import { NurseInventoryDashboardPage } from './pages/NurseInventoryDashboardPage';
 import { NurseRecordsPage } from './pages/NurseRecordsPage';
+import { NurseReferralsPage } from './pages/NurseReferralsPage';
 import { NurseReportsPage } from './pages/NurseReportsPage';
 import { PatientPortalPage } from './pages/PatientPortalPage';
 import { RoleLandingPage } from './pages/RoleLandingPage';
@@ -111,14 +112,25 @@ function App() {
               </RoleRoute>
             }
           />
-  <Route
-  path="nurse/inventory"
-  element={
-    <RoleRoute roles={['nurse', 'admin']}>
-      <NurseInventoryDashboardPage />
-    </RoleRoute>
-  }
-/>
+
+          {/* Inventory Module */}
+          <Route
+            path="nurse/inventory"
+            element={
+              <RoleRoute roles={['nurse', 'admin']}>
+                <NurseInventoryDashboardPage />
+              </RoleRoute>
+            }
+          />
+
+          <Route
+            path="nurse/inventory/stocks"
+            element={
+              <RoleRoute roles={['nurse', 'admin']}>
+                <NurseInventoryStocksPage />
+              </RoleRoute>
+            }
+          />
 
           <Route
             path="doctor"

@@ -3348,3 +3348,90 @@ pre {
     width: min(100%, 320px);
   }
 }
+
+/* ===== Modal Styles (Inventory Module) ===== */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.modal-panel {
+  background: #ffffff;
+  border-radius: 1rem;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.25);
+  width: 100%;
+  max-width: 480px;
+  overflow: hidden;
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid #f0f0f0;
+  background: linear-gradient(135deg, #d94e70 0%, #b83355 100%);
+  color: #ffffff;
+}
+
+.modal-head h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0;
+  color: #ffffff;
+}
+
+.modal-head .button.ghost {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.15);
+  border-color: transparent;
+}
+
+.modal-head .button.ghost:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.modal-form {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.modal-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #333333;
+}
+
+.modal-form input {
+  padding: 0.7rem 0.9rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 0.6rem;
+  font-size: 0.95rem;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  color: #111111;
+  background: #ffffff;
+}
+
+.modal-form input:focus {
+  border-color: #d94e70;
+  box-shadow: 0 0 0 3px rgba(217, 78, 112, 0.15);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
