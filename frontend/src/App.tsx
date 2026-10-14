@@ -23,6 +23,7 @@ import { NurseReportsPage } from './pages/NurseReportsPage';
 import { PatientPortalPage } from './pages/PatientPortalPage';
 import { RoleLandingPage } from './pages/RoleLandingPage';
 import { NurseInventoryHistoryPage } from './pages/NurseInventoryHistoryPage';
+import { NurseInventoryAboutPage } from './pages/NurseInventoryAboutPage';
 
 
 function App() {
@@ -151,6 +152,14 @@ function App() {
             </RoleRoute>
             }
           />
+          <Route
+            path="nurse/inventory/about"
+             element={
+             <RoleRoute roles={['nurse', 'admin']}>
+               <NurseInventoryAboutPage />
+             </RoleRoute>
+             }
+           />
 
           {/* ============ Doctor Module ============ */}
           <Route
