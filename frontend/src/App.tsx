@@ -12,6 +12,7 @@ import { NurseAboutPage } from './pages/NurseAboutPage';
 import { NurseConsultationFormPage } from './pages/NurseConsultationFormPage';
 import { NurseConsultationTypePage } from './pages/NurseConsultationTypePage';
 import { NurseInventoryDashboardPage } from './pages/NurseInventoryDashboardPage';
+import { NurseInventoryRequestsPage } from './pages/NurseInventoryRequestsPage';
 import { NurseInventoryStocksPage } from './pages/NurseInventoryStocksPage';
 import { NursePatientDetailPage } from './pages/NursePatientDetailPage';
 import { NursePrintPrescriptionPage } from './pages/NursePrintPrescriptionPage';
@@ -113,7 +114,7 @@ function App() {
             }
           />
 
-          {/* Inventory Module */}
+          {/* ============ Inventory Module ============ */}
           <Route
             path="nurse/inventory"
             element={
@@ -132,6 +133,16 @@ function App() {
             }
           />
 
+          <Route
+            path="nurse/inventory/requests"
+            element={
+              <RoleRoute roles={['nurse', 'admin']}>
+                <NurseInventoryRequestsPage />
+              </RoleRoute>
+            }
+          />
+
+          {/* ============ Doctor Module ============ */}
           <Route
             path="doctor"
             element={

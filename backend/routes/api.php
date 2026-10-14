@@ -13,6 +13,8 @@ use App\Http\Controllers\Api\V1\ReferralController;
 use App\Http\Controllers\Api\V1\ReportController;
 use App\Http\Controllers\Api\V1\UserController;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\V1\CampusController;
+
 
 Route::prefix('v1')->group(function (): void {
     Route::get('/health', [HealthController::class, 'index']);
@@ -38,6 +40,7 @@ Route::prefix('v1')->group(function (): void {
             Route::patch('/consultations/{consultation}', [ConsultationController::class, 'update']);
             Route::post('/referrals', [ReferralController::class, 'store']);
             Route::post('/reports/ai-summary', [ReportController::class, 'aiSummary'])->middleware('throttle:10,1');
+            Route::get('/campuses', [CampusController::class, 'index']);
         });
 
         Route::middleware('role:student,employee')->group(function (): void {
