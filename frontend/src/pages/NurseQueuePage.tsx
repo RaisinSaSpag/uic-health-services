@@ -21,7 +21,7 @@ import {
 import { StatusBadge } from '../components/StatusBadge';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../lib/api';
-import { notifyError, notifyInfo } from '../lib/alerts';
+import { notifyError } from '../lib/alerts';
 import { formatDateTime, userDisplayName } from '../lib/format';
 import { getErrorMessage } from '../lib/http';
 import type { Consultation, PaginatedResponse } from '../types/hsms';
@@ -278,8 +278,10 @@ export function NurseQueuePage() {
   }, [recentConsultationSearch, recentConsultations]);
 
   const onMenuClick = (section: NurseSection): void => {
+    setActiveSection(section);
+
     if (section === 'inventory') {
-      void notifyInfo('Inventory is coming soon.', 'Coming Soon');
+      navigate('/nurse/inventory');
       return;
     }
 

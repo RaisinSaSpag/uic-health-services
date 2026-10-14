@@ -15,6 +15,7 @@ import { NursePatientDetailPage } from './pages/NursePatientDetailPage';
 import { NursePrintPrescriptionPage } from './pages/NursePrintPrescriptionPage';
 import { NurseQueuePage } from './pages/NurseQueuePage';
 import { NurseReferralsPage } from './pages/NurseReferralsPage';
+import { NurseInventoryDashboardPage } from './pages/NurseInventoryDashboardPage';
 import { NurseRecordsPage } from './pages/NurseRecordsPage';
 import { NurseReportsPage } from './pages/NurseReportsPage';
 import { PatientPortalPage } from './pages/PatientPortalPage';
@@ -110,6 +111,14 @@ function App() {
               </RoleRoute>
             }
           />
+  <Route
+  path="nurse/inventory"
+  element={
+    <RoleRoute roles={['nurse', 'admin']}>
+      <NurseInventoryDashboardPage />
+    </RoleRoute>
+  }
+/>
 
           <Route
             path="doctor"

@@ -22,6 +22,7 @@ export interface AuthUser {
   first_name: string;
   last_name: string;
   role: RoleName | null;
+  campus_id?: number | null;
   campus?: string | null;
   department?: string | null;
 }

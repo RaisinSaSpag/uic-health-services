@@ -53,7 +53,6 @@ class AuthController extends Controller
             $user = $this->googleAuthService->authenticateFromCallback();
             $token = $this->jwtService->issueToken($user);
 
-            // If client specifically asks for JSON (e.g. mobile app or AJAX call)
             if ($request->expectsJson() || $request->boolean('json')) {
                 return response()->json([
                     'token_type' => 'Bearer',
@@ -65,6 +64,7 @@ class AuthController extends Controller
                         'first_name' => $user->first_name,
                         'last_name' => $user->last_name,
                         'role' => $user->role?->name,
+                        'campus_id' => $user->campus_id,
                         'campus' => $user->campus?->name,
                         'department' => $user->department?->name,
                     ],
@@ -129,6 +129,7 @@ class AuthController extends Controller
                 'first_name' => $user->first_name,
                 'last_name' => $user->last_name,
                 'role' => $user->role?->name,
+                'campus_id' => $user->campus_id,
                 'campus' => $user->campus?->name,
                 'department' => $user->department?->name,
             ],
@@ -145,6 +146,7 @@ class AuthController extends Controller
             'first_name' => $user?->first_name,
             'last_name' => $user?->last_name,
             'role' => $user?->role?->name,
+            'campus_id' => $user?->campus_id,
             'campus' => $user?->campus?->name,
             'department' => $user?->department?->name,
         ]);
