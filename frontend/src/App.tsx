@@ -22,6 +22,8 @@ import { NurseReferralsPage } from './pages/NurseReferralsPage';
 import { NurseReportsPage } from './pages/NurseReportsPage';
 import { PatientPortalPage } from './pages/PatientPortalPage';
 import { RoleLandingPage } from './pages/RoleLandingPage';
+import { NurseInventoryHistoryPage } from './pages/NurseInventoryHistoryPage';
+
 
 function App() {
   return (
@@ -139,6 +141,14 @@ function App() {
               <RoleRoute roles={['nurse', 'admin']}>
                 <NurseInventoryRequestsPage />
               </RoleRoute>
+            }
+          />
+          <Route
+            path="nurse/inventory/history"
+           element={
+              <RoleRoute roles={['nurse', 'admin']}>
+                <NurseInventoryHistoryPage />
+            </RoleRoute>
             }
           />
 

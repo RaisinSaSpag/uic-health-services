@@ -42,6 +42,9 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/reports/ai-summary', [ReportController::class, 'aiSummary'])->middleware('throttle:10,1');
             Route::get('/campuses', [CampusController::class, 'index']);
         });
+        Route::middleware('role:nurse,admin')->group(function (): void {
+            Route::get('/history-log', [AuditLogController::class, 'historyForCampus']);
+        });
 
         Route::middleware('role:student,employee')->group(function (): void {
             Route::post('/patients', [PatientController::class, 'store']);
