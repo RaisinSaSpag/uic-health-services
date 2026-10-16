@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  ArrowLeft,
   CheckCircle2,
   Package,
   Plus,
@@ -13,6 +14,7 @@ import {
 } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { useAuth } from '../context/AuthContext';
+import { useInventoryBasePath } from '../lib/useInventoryBasePath';
 import { api } from '../lib/api';
 import { notifyError, notifySuccess } from '../lib/alerts';
 import { formatDateTime, userDisplayName } from '../lib/format';
@@ -69,6 +71,16 @@ const menuItems: MenuItem[] = [
 export function NurseInventoryRequestsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { basePath, isDoctor } = useInventoryBasePath();
+
+  const resolvedMenuItems = useMemo(
+    () =>
+      menuItems.map((item) => ({
+        ...item,
+        path: item.path.replace('/nurse/inventory', basePath),
+      })),
+    [basePath],
+  );
 
   const [requests, setRequests] = useState<BranchRequest[]>([]);
   const [campuses, setCampuses] = useState<Campus[]>([]);
@@ -266,7 +278,18 @@ export function NurseInventoryRequestsPage() {
           </div>
         </div>
         <nav className="nurse-sidebar-nav" aria-label="Inventory navigation">
-          {menuItems.map((item) => {
+              <div className="nurse-nav-item">
+                <button
+                  className="nurse-side-link back-to-dashboard"
+                  onClick={() => navigate(basePath === '/doctor/inventory' ? '/doctor' : '/nurse')}
+                  type="button"
+                >
+                  <ArrowLeft className="nurse-side-icon" size={18} strokeWidth={2.2} />
+                  <span className="nurse-side-label">Back to Dashboard</span>
+                </button>
+              </div>
+
+              {resolvedMenuItems.map((item) => {
             const Icon = item.icon;
             const isActive = item.key === 'requests';
             return (
@@ -301,10 +324,12 @@ export function NurseInventoryRequestsPage() {
               >
                 <RefreshCw className={`nurse-refresh-icon${loading ? ' spinning' : ''}`} size={16} strokeWidth={2.2} />
               </button>
-              <button className="button" onClick={openModal} type="button">
-                <Plus size={16} strokeWidth={2.2} />
-                New Request
-              </button>
+              {!isDoctor && (
+                <button className="button" onClick={openModal} type="button">
+                  <Plus size={16} strokeWidth={2.2} />
+                  New Request
+                </button>
+              )}
             </div>
           </div>
         </section>

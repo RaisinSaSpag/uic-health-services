@@ -10,6 +10,7 @@ import {
   GraduationCap,
   Info,
   LayoutDashboard,
+  MessageSquare,
   Package,
   Printer,
   RefreshCw,
@@ -26,7 +27,7 @@ import { formatDateTime, userDisplayName } from '../lib/format';
 import { getErrorMessage } from '../lib/http';
 import type { Consultation, PaginatedResponse } from '../types/hsms';
 
-type NurseSection = 'dashboard' | 'search' | 'print' | 'reports' | 'inventory' | 'referrals' | 'about';
+type NurseSection = 'dashboard' | 'search' | 'print' | 'reports' | 'inventory' | 'referrals' | 'about' | 'chat';
 type SearchTarget = 'student' | 'employee';
 
 interface NurseDashboardStats {
@@ -88,6 +89,11 @@ const nurseMenuItems: NurseMenuItem[] = [
     key: 'about',
     label: 'About',
     icon: Info,
+  },
+  {
+    key: 'chat',
+    label: 'Messages',
+    icon: MessageSquare,
   },
 ];
 
@@ -282,6 +288,12 @@ export function NurseQueuePage() {
 
     if (section === 'inventory') {
       navigate('/nurse/inventory');
+      return;
+    }
+
+    
+    if (section === 'chat') {
+      navigate('/nurse/chat');
       return;
     }
 

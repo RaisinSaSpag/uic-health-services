@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  Bell,
   ArrowUpRight,
   CheckCircle2,
   ClipboardCheck,
   Info,
   LayoutDashboard,
+  MessageSquare,
   Package,
   RefreshCw,
   Search,
@@ -15,12 +17,12 @@ import {
 import { StatusBadge } from '../components/StatusBadge';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../lib/api';
-import { notifyError, notifyInfo } from '../lib/alerts';
+import { notifyError } from '../lib/alerts';
 import { formatDateTime, userDisplayName } from '../lib/format';
 import { getErrorMessage } from '../lib/http';
 import type { Consultation, PaginatedResponse, Referral } from '../types/hsms';
 
-type DoctorSection = 'dashboard' | 'inventory' | 'referrals' | 'about';
+type DoctorSection = 'dashboard' | 'inventory' | 'referrals' | 'about' | 'chat' | 'notifications';
 
 interface DoctorMenuItem {
   key: DoctorSection;
@@ -56,6 +58,24 @@ const doctorMenuItems: DoctorMenuItem[] = [
     label: 'About',
     icon: Info,
   },
+ {
+    key: 'chat',
+    label: 'Messages',
+    icon: MessageSquare,
+  },
+  {
+    key: 'notifications',
+    label: 'Notifications',
+    icon: Bell,
+  },
+];
+const doctorInventorySubItems: Array<{ key: string; label: string; path: string }> = [
+  { key: 'inventory_dashboard', label: 'Dashboard', path: '/doctor/inventory' },
+  { key: 'inventory_stocks', label: 'Stocks', path: '/doctor/inventory/stocks' },
+  { key: 'inventory_requests', label: 'Branch Requests', path: '/doctor/inventory/requests' },
+  { key: 'inventory_history', label: 'History', path: '/doctor/inventory/history' },
+  { key: 'inventory_reports', label: 'Reports', path: '/doctor/inventory/reports' },
+  { key: 'inventory_about', label: 'About', path: '/doctor/inventory/about' },
 ];
 
 const defaultStats: DoctorDashboardStats = {
@@ -87,6 +107,7 @@ export function DoctorDashboardPage() {
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   const [activeSection, setActiveSection] = useState<DoctorSection>('dashboard');
+  const [isInventoryOpen, setIsInventoryOpen] = useState(false);
   const [stats, setStats] = useState<DoctorDashboardStats>(defaultStats);
   const [recentConsultations, setRecentConsultations] = useState<Consultation[]>([]);
   const [recentSearch, setRecentSearch] = useState('');
@@ -170,7 +191,18 @@ export function DoctorDashboardPage() {
     }
 
     if (section === 'inventory') {
-      void notifyInfo('Inventory is coming soon.', 'Coming Soon');
+      setIsInventoryOpen((current) => !current);
+      return;
+    }
+
+    
+    if (section === 'chat') {
+      navigate('/doctor/chat');
+      return;
+    }
+
+    if (section === 'notifications') {
+      navigate('/doctor/notifications');
       return;
     }
 
@@ -182,6 +214,10 @@ export function DoctorDashboardPage() {
     if (section === 'about') {
       navigate('/doctor/about');
     }
+  };
+
+  const onInventorySubItemClick = (path: string): void => {
+    navigate(path);
   };
 
   return (
@@ -209,6 +245,20 @@ export function DoctorDashboardPage() {
                   <MenuIcon className="nurse-side-icon" size={18} strokeWidth={2.2} />
                   <span className="nurse-side-label">{menuItem.label}</span>
                 </button>
+                {menuItem.key === 'inventory' && isInventoryOpen && (
+                  <div className="nurse-sidebar-submenu open" role="menu">
+                    {doctorInventorySubItems.map((subItem) => (
+                      <button
+                        key={subItem.key}
+                        className="nurse-search-option"
+                        onClick={() => onInventorySubItemClick(subItem.path)}
+                        type="button"
+                      >
+                        <span>{subItem.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}

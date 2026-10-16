@@ -1,5 +1,5 @@
 <?php
-
+use App\Http\Controllers\Api\V1\NotificationController;
 use App\Http\Controllers\Api\V1\AuditLogController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\BranchRequestController;
@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\V1\ConsultationController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\InventoryController;
 use App\Http\Controllers\Api\V1\MedicineController;
+use App\Http\Controllers\Api\V1\MessageController;
 use App\Http\Controllers\Api\V1\PatientController;
 use App\Http\Controllers\Api\V1\PrescriptionController;
 use App\Http\Controllers\Api\V1\ReferralController;
@@ -20,16 +21,16 @@ Route::prefix('v1')->group(function (): void {
     Route::get('/health', [HealthController::class, 'index']);
 
     Route::prefix('auth')->group(function (): void {
-        Route::get('/google/redirect', [AuthController::class, 'googleRedirect'])->middleware('throttle:12,1');
-        Route::get('/google/callback', [AuthController::class, 'googleCallback'])->middleware('throttle:6,1');
-        Route::post('/staff/login', [AuthController::class, 'staffLogin'])->middleware('throttle:8,1');
+        Route::get('/google/redirect', [AuthController::class, 'googleRedirect'])->middleware('throttle:30,1');
+        Route::get('/google/callback', [AuthController::class, 'googleCallback'])->middleware('throttle:20,1');
+        Route::post('/staff/login', [AuthController::class, 'staffLogin'])->middleware('throttle:20,1');
 
-        Route::middleware(['jwt', 'throttle:30,1'])->get('/me', [AuthController::class, 'me']);
+        Route::middleware(['jwt', 'throttle:60,1'])->get('/me', [AuthController::class, 'me']);
     });
 
-    Route::middleware(['jwt', 'throttle:60,1'])->group(function (): void {
+    Route::middleware(['jwt', 'throttle:200,1'])->group(function (): void {
         // ============================================================
-        // System A — Existing Routes
+        // System A -Ã‚Â¢-Ã‚Â¢-Ã‚Â¢-Ã‚Â¬-Ã‚Â¡-Ã‚Â¬-Ã‚Â¢-Ã‚Â¢-Ã…Â¡-Ã‚Â¬-Ã‚Â Existing Routes
         // ============================================================
 
         Route::middleware('role:nurse,admin')->group(function (): void {
@@ -40,10 +41,15 @@ Route::prefix('v1')->group(function (): void {
             Route::patch('/consultations/{consultation}', [ConsultationController::class, 'update']);
             Route::post('/referrals', [ReferralController::class, 'store']);
             Route::post('/reports/ai-summary', [ReportController::class, 'aiSummary'])->middleware('throttle:10,1');
-            Route::get('/campuses', [CampusController::class, 'index']);
+            // (campuses route moved to a doctor-accessible group below)
         });
-        Route::middleware('role:nurse,admin')->group(function (): void {
+        Route::middleware('role:doctor,nurse,admin')->group(function (): void {
             Route::get('/history-log', [AuditLogController::class, 'historyForCampus']);
+        });
+
+        // Campuses lookup â€” READ access for doctor, nurse, admin
+        Route::middleware('role:doctor,nurse,admin')->group(function (): void {
+            Route::get('/campuses', [CampusController::class, 'index']);
         });
 
         Route::middleware('role:student,employee')->group(function (): void {
@@ -64,63 +70,105 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/referrals/{referral}', [ReferralController::class, 'show']);
         });
 
+        // ============================================================
+        // Notifications — accessible to nurse, doctor, admin
+        // ============================================================
+        Route::middleware('role:nurse,doctor,admin')->group(function (): void {
+            Route::get('/notifications', [NotificationController::class, 'index']);
+            Route::get('/notifications/unread-count', [NotificationController::class, 'unreadCount']);
+            Route::post('/notifications/mark-read', [NotificationController::class, 'markRead']);
+            Route::post('/notifications/{auditLog}/read', [NotificationController::class, 'markOneRead'])->whereNumber('auditLog');
+        });
+
         Route::middleware('role:admin')->group(function (): void {
             Route::get('/audit-logs', [AuditLogController::class, 'index']);
             Route::get('/users', [UserController::class, 'index'])->middleware('throttle:30,1');
             Route::patch('/users/{user}/role', [UserController::class, 'updateRole'])
                 ->whereNumber('user')
                 ->middleware('throttle:10,1');
+            Route::post('/users', [UserController::class, 'store'])
+                ->middleware('throttle:10,1');
+            Route::patch('/users/{user}', [UserController::class, 'update'])
+                ->whereNumber('user')
+                ->middleware('throttle:10,1');
+            Route::delete('/users/{user}', [UserController::class, 'destroy'])
+                ->whereNumber('user')
+                ->middleware('throttle:10,1');
         });
 
         // ============================================================
-        // System B — New Inventory Routes (merged into System A)
+        // System B -Ã‚Â¢-Ã‚Â¢-Ã‚Â¢-Ã‚Â¬-Ã‚Â¡-Ã‚Â¬-Ã‚Â¢-Ã‚Â¢-Ã…Â¡-Ã‚Â¬-Ã‚Â New Inventory Routes (merged into System A)
         // ============================================================
 
-        // Medicines — read access for clinical staff
+        // Medicines -Ã‚Â¢-Ã‚Â¢-Ã‚Â¢-Ã‚Â¬-Ã‚Â¡-Ã‚Â¬-Ã‚Â¢-Ã‚Â¢-Ã…Â¡-Ã‚Â¬-Ã‚Â read access for clinical staff
         Route::middleware('role:nurse,admin,doctor')->group(function (): void {
             Route::get('/medicines', [MedicineController::class, 'index']);
+            Route::get('/medicines/stock-out', [MedicineController::class, 'stockOut']);
             Route::get('/medicines/{medicine}', [MedicineController::class, 'show']);
         });
 
-        // Medicines — write access for nurse + admin only
+                // ============================================================
+        // Chat / Messages — accessible to nurse, doctor, admin
+        // ============================================================
+        Route::middleware('role:nurse,doctor,admin')->group(function (): void {
+            Route::get('/messages/contacts', [MessageController::class, 'contacts']);
+            Route::get('/messages/thread/{user}', [MessageController::class, 'thread'])->whereNumber('user');
+            Route::post('/messages', [MessageController::class, 'store']);
+            Route::post('/messages/read/{user}', [MessageController::class, 'markRead'])->whereNumber('user');
+            Route::get('/messages/unread-count', [MessageController::class, 'unreadCount']);
+        });
+
+        // Medicines -Ã‚Â¢-Ã‚Â¢-Ã‚Â¢-Ã‚Â¬-Ã‚Â¡-Ã‚Â¬-Ã‚Â¢-Ã‚Â¢-Ã…Â¡-Ã‚Â¬-Ã‚Â write access for nurse + admin only
         Route::middleware('role:nurse,admin')->group(function (): void {
             Route::post('/medicines', [MedicineController::class, 'store']);
             Route::patch('/medicines/{medicine}', [MedicineController::class, 'update']);
             Route::delete('/medicines/{medicine}', [MedicineController::class, 'destroy']);
         });
 
-        // Inventory operations — nurse + admin
-        Route::middleware('role:nurse,admin')->group(function (): void {
-            Route::post('/inventory/stock-in', [InventoryController::class, 'stockIn']);
-            Route::post('/inventory/dispense', [InventoryController::class, 'dispense']);
-            Route::post('/inventory/archive', [InventoryController::class, 'archive']);
+        // Inventory operations -Ã‚Â¢-Ã‚Â¬-Ã‚Â READ access for doctor, nurse, admin
+        Route::middleware('role:doctor,nurse,admin')->group(function (): void {
             Route::get('/inventory/available', [InventoryController::class, 'available']);
             Route::get('/inventory/low-stock', [InventoryController::class, 'lowStock']);
             Route::get('/inventory/expiring-soon', [InventoryController::class, 'expiringSoon']);
         });
 
-        // Branch requests — nurse + admin
+        // Inventory operations -Ã‚Â¢-Ã‚Â¬-Ã‚Â WRITE access for nurse + admin only
         Route::middleware('role:nurse,admin')->group(function (): void {
+            Route::post('/inventory/stock-in', [InventoryController::class, 'stockIn']);
+            Route::post('/inventory/dispense', [InventoryController::class, 'dispense']);            Route::post('/inventory/archive', [InventoryController::class, 'archive']);
+
+            // Archived medicines management
+            Route::get('/inventory/archived', [InventoryController::class, 'archived']);
+            Route::post('/inventory/archived/{id}/restore', [InventoryController::class, 'restoreArchived'])->whereNumber('id');
+            Route::delete('/inventory/archived/{id}', [InventoryController::class, 'deleteArchived'])->whereNumber('id');
+        });
+
+        // Branch requests -Ã‚Â¢-Ã‚Â¬-Ã‚Â READ access for doctor, nurse, admin
+        Route::middleware('role:doctor,nurse,admin')->group(function (): void {
             Route::get('/branch-requests', [BranchRequestController::class, 'index']);
-            Route::post('/branch-requests', [BranchRequestController::class, 'store']);
             Route::get('/branch-requests/{branchRequest}', [BranchRequestController::class, 'show']);
+        });
+
+        // Branch requests -Ã‚Â¢-Ã‚Â¬-Ã‚Â WRITE access for nurse + admin only
+        Route::middleware('role:nurse,admin')->group(function (): void {
+            Route::post('/branch-requests', [BranchRequestController::class, 'store']);
             Route::patch('/branch-requests/{branchRequest}/approve', [BranchRequestController::class, 'approve']);
             Route::patch('/branch-requests/{branchRequest}/reject', [BranchRequestController::class, 'reject']);
             Route::patch('/branch-requests/{branchRequest}/complete', [BranchRequestController::class, 'complete']);
         });
 
-        // Prescriptions — doctor creates & cancels
+        // Prescriptions -Ã‚Â¢-Ã‚Â¢-Ã‚Â¢-Ã‚Â¬-Ã‚Â¡-Ã‚Â¬-Ã‚Â¢-Ã‚Â¢-Ã…Â¡-Ã‚Â¬-Ã‚Â doctor creates & cancels
         Route::middleware('role:doctor,admin')->group(function (): void {
             Route::post('/prescriptions', [PrescriptionController::class, 'store']);
             Route::patch('/prescriptions/{prescription}/cancel', [PrescriptionController::class, 'cancel']);
         });
 
-        // Prescriptions — nurse dispenses
+        // Prescriptions -Ã‚Â¢-Ã‚Â¢-Ã‚Â¢-Ã‚Â¬-Ã‚Â¡-Ã‚Â¬-Ã‚Â¢-Ã‚Â¢-Ã…Â¡-Ã‚Â¬-Ã‚Â nurse dispenses
         Route::middleware('role:nurse,admin')->group(function (): void {
             Route::patch('/prescriptions/{prescription}/dispense', [PrescriptionController::class, 'dispense']);
         });
 
-        // Prescriptions — read access for clinical staff
+        // Prescriptions -Ã‚Â¢-Ã‚Â¢-Ã‚Â¢-Ã‚Â¬-Ã‚Â¡-Ã‚Â¬-Ã‚Â¢-Ã‚Â¢-Ã…Â¡-Ã‚Â¬-Ã‚Â read access for clinical staff
         Route::middleware('role:nurse,doctor,admin')->group(function (): void {
             Route::get('/prescriptions', [PrescriptionController::class, 'index']);
             Route::get('/prescriptions/{prescription}', [PrescriptionController::class, 'show']);

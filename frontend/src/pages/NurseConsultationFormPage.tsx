@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import {
+  Bell,
   Activity,
   ArrowLeftCircle,
   BarChart3,
@@ -16,15 +17,16 @@ import {
   Search,
   Stethoscope,
   type LucideIcon,
+  MessageSquare,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../lib/api';
-import { confirmAction, notifyError, notifyInfo, notifySuccess } from '../lib/alerts';
+import { confirmAction, notifyError, notifySuccess } from '../lib/alerts';
 import { getErrorMessage } from '../lib/http';
 import { userDisplayName } from '../lib/format';
 import type { Consultation, PaginatedResponse, Patient, UserRecord } from '../types/hsms';
 
-type NurseSection = 'dashboard' | 'search' | 'print' | 'reports' | 'inventory' | 'referrals' | 'about';
+type NurseSection = 'dashboard' | 'search' | 'print' | 'reports' | 'inventory' | 'referrals' | 'about' | 'chat' | 'notifications';
 type NurseRecordsPatientType = 'student' | 'employee';
 type ConsultationType = 'walk_in' | 'scheduled';
 type ConsultationTypeParam = 'walk-in' | 'scheduled';
@@ -86,6 +88,16 @@ const nurseMenuItems: NurseMenuItem[] = [
     key: 'about',
     label: 'About',
     icon: Info,
+  },
+  {
+    key: 'chat',
+    label: 'Messages',
+    icon: MessageSquare,
+  },
+  {
+    key: 'notifications',
+    label: 'Notifications',
+    icon: Bell,
   },
 ];
 
@@ -288,7 +300,17 @@ export function NurseConsultationFormPage() {
 
   const onMenuClick = (section: NurseSection): void => {
     if (section === 'inventory') {
-      void notifyInfo('Inventory is coming soon.', 'Coming Soon');
+      navigate('/nurse/inventory');
+      return;
+    }
+
+    if (section === 'chat') {
+      navigate('/nurse/chat');
+      return;
+    }
+
+    if (section === 'notifications') {
+      navigate('/nurse/notifications');
       return;
     }
 

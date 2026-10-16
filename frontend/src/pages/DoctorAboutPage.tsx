@@ -1,11 +1,18 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Info, LayoutDashboard, Package, Stethoscope, type LucideIcon } from 'lucide-react';
+import {
+  Bell,
+  Info,
+  LayoutDashboard,
+  Package,
+  Stethoscope,
+  MessageSquare,
+  type LucideIcon,
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { notifyInfo } from '../lib/alerts';
 import { userDisplayName } from '../lib/format';
 
-type DoctorSection = 'dashboard' | 'inventory' | 'referrals' | 'about';
+type DoctorSection = 'dashboard' | 'inventory' | 'referrals' | 'about' | 'chat' | 'notifications';
 
 interface DoctorMenuItem {
   key: DoctorSection;
@@ -40,6 +47,24 @@ const doctorMenuItems: DoctorMenuItem[] = [
     label: 'About',
     icon: Info,
   },
+  {
+    key: 'chat',
+    label: 'Messages',
+    icon: MessageSquare,
+  },
+  {
+    key: 'notifications',
+    label: 'Notifications',
+    icon: Bell,
+  },
+];
+const doctorInventorySubItems: Array<{ key: string; label: string; path: string }> = [
+  { key: 'inventory_dashboard', label: 'Dashboard', path: '/doctor/inventory' },
+  { key: 'inventory_stocks', label: 'Stocks', path: '/doctor/inventory/stocks' },
+  { key: 'inventory_requests', label: 'Branch Requests', path: '/doctor/inventory/requests' },
+  { key: 'inventory_history', label: 'History', path: '/doctor/inventory/history' },
+  { key: 'inventory_reports', label: 'Reports', path: '/doctor/inventory/reports' },
+  { key: 'inventory_about', label: 'About', path: '/doctor/inventory/about' },
 ];
 
 const healthTeamMembers: AboutPerson[] = [
@@ -78,6 +103,7 @@ export function DoctorAboutPage() {
   const navigate = useNavigate();
 
   const [activeSection, setActiveSection] = useState<DoctorSection>('about');
+  const [isInventoryOpen, setIsInventoryOpen] = useState(false);
 
   const doctorName = useMemo(() => userDisplayName(user), [user]);
   const campusName = useMemo(() => user?.campus ?? 'Campus not assigned', [user]);
@@ -90,8 +116,18 @@ export function DoctorAboutPage() {
       return;
     }
 
+    if (section === 'chat') {
+      navigate('/doctor/chat');
+      return;
+    }
+
+    if (section === 'notifications') {
+      navigate('/doctor/notifications');
+      return;
+    }
+
     if (section === 'inventory') {
-      void notifyInfo('Inventory is coming soon.', 'Coming Soon');
+      setIsInventoryOpen((current) => !current);
       return;
     }
 
@@ -101,6 +137,10 @@ export function DoctorAboutPage() {
     }
 
     navigate('/doctor/about');
+  };
+
+  const onInventorySubItemClick = (path: string): void => {
+    navigate(path);
   };
 
   return (
@@ -128,6 +168,20 @@ export function DoctorAboutPage() {
                   <MenuIcon className="nurse-side-icon" size={18} strokeWidth={2.2} />
                   <span className="nurse-side-label">{menuItem.label}</span>
                 </button>
+                {menuItem.key === 'inventory' && isInventoryOpen && (
+                  <div className="nurse-sidebar-submenu open" role="menu">
+                    {doctorInventorySubItems.map((subItem) => (
+                      <button
+                        key={subItem.key}
+                        className="nurse-search-option"
+                        onClick={() => onInventorySubItemClick(subItem.path)}
+                        type="button"
+                      >
+                        <span>{subItem.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}

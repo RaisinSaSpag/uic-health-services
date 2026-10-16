@@ -7,6 +7,7 @@ use App\Models\MedicineStockIn;
 use App\Models\MedicineStockOut;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Collection as SupportCollection;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -165,6 +166,108 @@ class InventoryService
         return max(0, (int) $stockIn->quantity - $dispensed - $archived);
     }
 
+    /**
+     * List all archived medicines for a campus.
+     */
+    public function listArchived(int $campusId): SupportCollection
+    {
+        return MedicineArchived::with(['stockIn.medicine', 'stockIn.campus', 'archivedBy'])
+            ->whereHas('stockIn', function ($query) use ($campusId) {
+                $query->where('campus_id', $campusId);
+            })
+            ->orderByDesc('archived_at')
+            ->get()
+            ->map(function (MedicineArchived $archived) {
+                $stockIn = $archived->stockIn;
+                return [
+                    'id' => $archived->id,
+                    'stock_in_id' => $archived->stock_in_id,
+                    'medicine_id' => $stockIn?->medicine_id,
+                    'medicine_name' => $stockIn?->medicine?->name,
+                    'medicine_category' => $stockIn?->medicine?->category,
+                    'campus_id' => $stockIn?->campus_id,
+                    'campus_name' => $stockIn?->campus?->name,
+                    'date_received' => $stockIn?->date_received,
+                    'expiration_date' => $stockIn?->expiration_date,
+                    'batch_quantity' => $stockIn?->quantity,
+                    'quantity_archived' => $archived->quantity,
+                    'reason' => $archived->reason,
+                    'archived_by_id' => $archived->archived_by,
+                    'archived_by_name' => $archived->archivedBy
+                        ? trim(($archived->archivedBy->first_name ?? '') . ' ' . ($archived->archivedBy->last_name ?? ''))
+                        : 'Unknown',
+                    'archived_at' => $archived->archived_at?->toIso8601String(),
+                ];
+            })
+            ->values();
+    }
+
+    /**
+     * Restore an archived record: deletes the MedicineArchived row, returning
+     * the quantity to the available stock of the parent batch.
+     */
+    public function restoreArchived(int $archivedId, int $actorId): MedicineArchived
+    {
+        return DB::transaction(function () use ($archivedId, $actorId) {
+            $archived = MedicineArchived::lockForUpdate()->find($archivedId);
+
+            if (!$archived) {
+                throw new RuntimeException('Archived record not found.');
+            }
+
+            // Audit BEFORE delete
+            $this->auditLogService->record($actorId, 'inventory.restored', 'medicine_archived', $archived->id, [
+                'stock_in_id' => $archived->stock_in_id,
+                'quantity' => $archived->quantity,
+                'reason' => $archived->reason,
+            ]);
+
+            $archived->delete();
+
+            return $archived;
+        });
+    }
+
+    /**
+     * Permanently delete an archived record AND the underlying stock batch
+     * if all its units are archived (available + dispensed = 0).
+     */
+    public function deleteArchived(int $archivedId, int $actorId): void
+    {
+        DB::transaction(function () use ($archivedId, $actorId) {
+            $archived = MedicineArchived::lockForUpdate()->find($archivedId);
+
+            if (!$archived) {
+                throw new RuntimeException('Archived record not found.');
+            }
+
+            $stockInId = $archived->stock_in_id;
+            $quantity = $archived->quantity;
+
+            // Audit BEFORE delete
+            $this->auditLogService->record($actorId, 'inventory.archived_deleted', 'medicine_archived', $archived->id, [
+                'stock_in_id' => $stockInId,
+                'quantity' => $quantity,
+                'reason' => $archived->reason,
+            ]);
+
+            $archived->delete();
+
+            // Check if the parent batch has any remaining units
+            // If not, it's orphaned Ã¢â‚¬â€ remove it too
+            $stockIn = MedicineStockIn::find($stockInId);
+            if ($stockIn) {
+                $dispensed = (int) MedicineStockOut::where('stock_in_id', $stockInId)->sum('quantity_dispensed');
+                $remainingArchived = (int) MedicineArchived::where('stock_in_id', $stockInId)->sum('quantity');
+                $available = max(0, (int) $stockIn->quantity - $dispensed - $remainingArchived);
+
+                // If nothing is left available and nothing archived, hard-delete the batch
+                if ($available === 0 && $remainingArchived === 0 && $dispensed === 0) {
+                    $stockIn->delete();
+                }
+            }
+        });
+    }
     public function availableStockForCampus(int $campusId): Collection
     {
         return MedicineStockIn::with(['medicine', 'campus'])

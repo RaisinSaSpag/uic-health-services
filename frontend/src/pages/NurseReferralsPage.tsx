@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
+  Bell,
   ArrowLeftCircle,
   BarChart3,
   Briefcase,
@@ -13,16 +14,17 @@ import {
   Search,
   Stethoscope,
   type LucideIcon,
+  MessageSquare,
 } from 'lucide-react';
 import { StatusBadge } from '../components/StatusBadge';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../lib/api';
-import { notifyError, notifyInfo } from '../lib/alerts';
+import { notifyError } from '../lib/alerts';
 import { formatDateTime, userDisplayName } from '../lib/format';
 import { getErrorMessage } from '../lib/http';
 import type { PaginatedResponse, Referral } from '../types/hsms';
 
-type NurseSection = 'dashboard' | 'search' | 'print' | 'reports' | 'inventory' | 'referrals' | 'about';
+type NurseSection = 'dashboard' | 'search' | 'print' | 'reports' | 'inventory' | 'referrals' | 'about' | 'chat' | 'notifications';
 type SearchTarget = 'student' | 'employee';
 
 interface NurseMenuItem {
@@ -39,6 +41,16 @@ const nurseMenuItems: NurseMenuItem[] = [
   { key: 'inventory', label: 'Inventory', icon: Package },
   { key: 'referrals', label: 'Referrals', icon: Stethoscope },
   { key: 'about', label: 'About', icon: Info },
+  {
+    key: 'chat',
+    label: 'Messages',
+    icon: MessageSquare,
+  },
+  {
+    key: 'notifications',
+    label: 'Notifications',
+    icon: Bell,
+  },
 ];
 
 const searchTargetOptions: Array<{ key: SearchTarget; label: string; icon: LucideIcon }> = [
@@ -173,7 +185,17 @@ export function NurseReferralsPage() {
 
   const onMenuClick = (section: NurseSection): void => {
     if (section === 'inventory') {
-      void notifyInfo('Inventory is coming soon.', 'Coming Soon');
+      navigate('/nurse/inventory');
+      return;
+    }
+
+    if (section === 'chat') {
+      navigate('/nurse/chat');
+      return;
+    }
+
+    if (section === 'notifications') {
+      navigate('/nurse/notifications');
       return;
     }
 

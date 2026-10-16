@@ -73,4 +73,21 @@ class MedicineController extends Controller
             return response()->json(['message' => $exception->getMessage()], 409);
         }
     }
+
+        public function stockOut(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'campus_id' => ['required', 'integer', 'exists:campuses,id'],
+            'month' => ['nullable', 'integer', 'min:1', 'max:12'],
+            'year' => ['nullable', 'integer', 'min:2000', 'max:2100'],
+        ]);
+
+        $report = $this->medicineService->stockOutReport(
+            (int) $validated['campus_id'],
+            isset($validated['month']) ? (int) $validated['month'] : null,
+            isset($validated['year']) ? (int) $validated['year'] : null,
+        );
+
+        return response()->json($report);
+    }
 }

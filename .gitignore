@@ -1,0 +1,66 @@
+# ============================================================
+# Environment
+# ============================================================
+.env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+
+# ============================================================
+# Dependencies
+# ============================================================
+node_modules/
+backend/vendor/
+frontend/node_modules/
+
+# ============================================================
+# Build outputs
+# ============================================================
+frontend/dist/
+backend/public/build/
+backend/public/hot
+
+# ============================================================
+# Database
+# ============================================================
+backend/database/database.sqlite
+backend/database/*.sqlite
+backend/database/migrations_backup_*/
+
+# ============================================================
+# Storage / logs
+# ============================================================
+backend/storage/logs/*
+backend/storage/framework/cache/*
+backend/storage/framework/sessions/*
+backend/storage/framework/views/*
+!backend/storage/logs/.gitignore
+
+# ============================================================
+# Backups and session artifacts
+# ============================================================
+*.bak
+*.bak.*
+*.broken.bak
+*.manual.bak
+*.pre-edit.bak
+apply-notifications.ps1
+apply-chat.ps1
+audit-b-parity.ps1
+fix-admin-audit.ps1
+probe.ps1
+backend/reset-admin.php
+
+# ============================================================
+# IDE / OS
+# ============================================================
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp

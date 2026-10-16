@@ -1,158 +1,243 @@
-# Health Services Management System (HSMS)
 
-HSMS is a centralized on-premise web system for managing school clinic consultations across multiple campuses.
+## Development Workflow
 
-The goal is to replace manual paper-based clinic processes with a maintainable and secure digital workflow for students, employees, nurses, doctors, and administrators.
+### Starting the app
 
-## Scope and Constraints
+Terminal 1 (backend):
+```powershell
+cd backend
+php artisan serve
+```
 
-- Monolithic architecture (no microservices)
-- Backend: Laravel API only
-- Frontend: React + TypeScript
-- Database: MS SQL Server
-- Authentication: Google OAuth (school email domain only)
-- Authorization: Role-based access control (RBAC)
+Terminal 2 (frontend):
+```powershell
+cd frontend
+npm run dev -- --strictPort
+```
 
-## Primary Roles
+Open `http://localhost:5173`.
 
-- Student
-- Employee
-- Nurse
-- Doctor
-- Admin
+### Building the frontend for production
 
-## Core Functional Flow
+```powershell
+cd frontend
+npm run build
+```
 
-1. User logs in via Google OAuth.
-2. Student or employee submits a consultation request.
-3. Nurse reviews and handles the consultation.
-4. If referral is needed, doctor completes referral remarks and prescription.
-5. Nurse finalizes medical record.
-6. Reports and printable outputs are generated for clinic operations.
+Output goes to `frontend/dist/`.
 
-## Development Phases (Strict Order)
+### Running a specific seeder
 
-1. Planning
-2. Backend Foundation
-3. Authentication
-4. Core Modules
-5. Frontend Integration
-6. Reporting and Printing
-7. Testing and Hardening
+```powershell
+cd backend
+php artisan db:seed --class=MedicineSeeder
+```
 
-## Phase 1 Deliverable
+### Rebuilding the database from scratch
 
-Detailed planning artifacts are documented in:
+```powershell
+cd backend
+php artisan migrate:fresh --seed
+```
 
-- [docs/phase-1-planning.md](docs/phase-1-planning.md)
+**Warning:** this **wipes all data**. Useful for testing a clean install.
 
-This document contains:
-- Normalized ERD and table blueprint
-- Consultation and referral status transitions
-- Role and permission matrix
-- Reporting data mapping
-- Phase exit criteria and implementation order for Phase 2
+### Checking routes
 
-## Current Project Status
+```powershell
+cd backend
+php artisan route:list --path=api/v1
+```
 
-- Phase 1 planning document prepared
-- Phase 2 backend foundation started in `backend/`
-- Phase 3 authentication module started in `backend/`
-- Phase 4 core modules started in `backend/`
-- Phase 5 frontend integration started in `frontend/`
-- Phase 6 reporting and printing completed (`frontend/` + `backend/`)
+### Syntax check a PHP file
 
-## Phase 2 Implementation Snapshot
+```powershell
+cd backend
+php -l app\Http\Controllers\Api\V1\UserController.php
+```
 
-Implemented in `backend/`:
-- Laravel API project scaffold
-- SQL Server-ready database configuration template
-- Core HSMS migrations for roles, campuses, departments, users, patients, consultations, referrals, medical_records, and audit_logs
-- Eloquent models with key relationships
-- Versioned API route scaffold (`/api/v1/...`)
-- RBAC middleware alias (`role`)
+### Common gotchas
 
-Key references:
-- [backend/routes/api.php](backend/routes/api.php)
-- [backend/app/Http/Middleware/RoleMiddleware.php](backend/app/Http/Middleware/RoleMiddleware.php)
-- [backend/database/migrations](backend/database/migrations)
-- [docs/phase-2-backend-foundation.md](docs/phase-2-backend-foundation.md)
+- **Port 5173 must be free.** If it's in use, kill stale Node processes:
+  ```powershell
+  Get-Process -Name node -ErrorAction SilentlyContinue | Stop-Process -Force
+  ```
+- **JWT tokens expire after 30 minutes** by default. Log out and back in if you get `401 Unauthorized`.
+- **After `migrate:fresh`, browser sessions are stale.** Clear Local Storage or use Incognito when testing.
 
-## Phase 3 Implementation Snapshot
+---
 
-Implemented in `backend/`:
-- Google OAuth endpoint flow via Socialite
-- School-domain restriction for login
-- JWT issuance after OAuth callback
-- JWT middleware for protected API routes
-- Auth endpoints: redirect URL, callback, and current user profile (`/api/v1/auth/me`)
+## API Overview
 
-Key references:
-- [backend/app/Http/Controllers/Api/V1/AuthController.php](backend/app/Http/Controllers/Api/V1/AuthController.php)
-- [backend/app/Http/Middleware/JwtAuthMiddleware.php](backend/app/Http/Middleware/JwtAuthMiddleware.php)
-- [backend/app/Services/Auth/GoogleAuthService.php](backend/app/Services/Auth/GoogleAuthService.php)
-- [backend/app/Services/Auth/JwtService.php](backend/app/Services/Auth/JwtService.php)
-- [docs/phase-3-authentication.md](docs/phase-3-authentication.md)
+All routes are versioned at `/api/v1` and require JWT auth except login/callback.
 
-## Phase 4 Implementation Snapshot
+### Public routes
 
-Implemented in `backend/`:
-- Patient self-registration and own-profile endpoint
-- Consultation submission and nurse workflow actions
-- Referral creation and doctor completion workflow
-- Medical record finalization in consultation completion
-- Audit log listing endpoint for admins
+```
+GET  /api/v1/health
+GET  /api/v1/auth/google/redirect
+GET  /api/v1/auth/google/callback
+POST /api/v1/auth/staff/login
+```
 
-Service layer additions:
-- `App\\Services\\Clinic\\PatientService`
-- `App\\Services\\Clinic\\ConsultationService`
-- `App\\Services\\Clinic\\ReferralService`
-- `App\\Services\\Clinic\\AuditLogService`
+### Authenticated routes (sample)
 
-Key references:
-- [backend/app/Http/Controllers/Api/V1/PatientController.php](backend/app/Http/Controllers/Api/V1/PatientController.php)
-- [backend/app/Http/Controllers/Api/V1/ConsultationController.php](backend/app/Http/Controllers/Api/V1/ConsultationController.php)
-- [backend/app/Http/Controllers/Api/V1/ReferralController.php](backend/app/Http/Controllers/Api/V1/ReferralController.php)
-- [backend/app/Http/Controllers/Api/V1/AuditLogController.php](backend/app/Http/Controllers/Api/V1/AuditLogController.php)
-- [backend/routes/api.php](backend/routes/api.php)
-- [docs/phase-4-core-modules.md](docs/phase-4-core-modules.md)
+```
+GET    /api/v1/auth/me
 
-## Phase 5 Implementation Snapshot
+GET    /api/v1/patients
+GET    /api/v1/patients/{id}
+GET    /api/v1/consultations
+POST   /api/v1/consultations
+PATCH  /api/v1/consultations/{id}
 
-Implemented in `frontend/`:
-- React + TypeScript app shell with protected routing
-- Google OAuth callback handling with JWT session storage
-- Role-aware route access for student/employee, nurse, doctor, and admin
-- Patient portal for profile registration, consultation submission, and consultation history
-- Nurse queue workflow actions and referral creation form
-- Doctor referral queue workflow actions
-- Admin audit log list with basic filters and pagination
+GET    /api/v1/referrals
+POST   /api/v1/referrals
+PATCH  /api/v1/referrals/{id}
 
-Key references:
-- [frontend/src/App.tsx](frontend/src/App.tsx)
-- [frontend/src/context/AuthContext.tsx](frontend/src/context/AuthContext.tsx)
-- [frontend/src/pages/PatientPortalPage.tsx](frontend/src/pages/PatientPortalPage.tsx)
-- [frontend/src/pages/NurseQueuePage.tsx](frontend/src/pages/NurseQueuePage.tsx)
-- [frontend/src/pages/DoctorReferralsPage.tsx](frontend/src/pages/DoctorReferralsPage.tsx)
-- [frontend/src/pages/AdminAuditPage.tsx](frontend/src/pages/AdminAuditPage.tsx)
-- [frontend/README.md](frontend/README.md)
-- [docs/phase-5-frontend-integration.md](docs/phase-5-frontend-integration.md)
+GET    /api/v1/medicines
+POST   /api/v1/medicines
+GET    /api/v1/medicines/stock-out
 
-## Phase 6 Implementation Snapshot
+GET    /api/v1/inventory/available
+GET    /api/v1/inventory/low-stock
+GET    /api/v1/inventory/expiring-soon
+POST   /api/v1/inventory/stock-in
+POST   /api/v1/inventory/dispense
+POST   /api/v1/inventory/archive
+GET    /api/v1/inventory/archived
+POST   /api/v1/inventory/archived/{id}/restore
+DELETE /api/v1/inventory/archived/{id}
 
-Implemented in `frontend/` and `backend/`:
-- Monthly reporting dashboard for nurse users
-- Diagnosis aggregation and grouped disease visualizations
-- Patient volume aggregation by category and subgroup breakdowns
-- Print-ready prescription page (nurse workflow)
-- Print-ready monthly report output
-- AI summary generation endpoint integration for reports with graceful fallback
+GET    /api/v1/branch-requests
+POST   /api/v1/branch-requests
+PATCH  /api/v1/branch-requests/{id}/approve
+PATCH  /api/v1/branch-requests/{id}/reject
+PATCH  /api/v1/branch-requests/{id}/complete
 
-Key references:
-- [frontend/src/pages/NurseReportsPage.tsx](frontend/src/pages/NurseReportsPage.tsx)
-- [frontend/src/pages/NursePrintPrescriptionPage.tsx](frontend/src/pages/NursePrintPrescriptionPage.tsx)
-- [frontend/src/App.tsx](frontend/src/App.tsx)
-- [backend/routes/api.php](backend/routes/api.php)
-- [backend/app/Http/Controllers/Api/V1/ReportController.php](backend/app/Http/Controllers/Api/V1/ReportController.php)
-- [backend/app/Services/Reports/ReportSummaryService.php](backend/app/Services/Reports/ReportSummaryService.php)
-- [docs/phase-6-reporting-printing.md](docs/phase-6-reporting-printing.md)
+GET    /api/v1/messages/contacts
+GET    /api/v1/messages/thread/{user}
+POST   /api/v1/messages
+POST   /api/v1/messages/read/{user}
+
+GET    /api/v1/notifications
+GET    /api/v1/notifications/unread-count
+POST   /api/v1/notifications/mark-read
+
+GET    /api/v1/users
+POST   /api/v1/users
+PATCH  /api/v1/users/{user}
+DELETE /api/v1/users/{user}
+PATCH  /api/v1/users/{user}/role
+
+GET    /api/v1/audit-logs
+GET    /api/v1/history-log
+```
+
+Full list: `php artisan route:list --path=api/v1`
+
+---
+
+## Database Schema Notes
+
+### Key tables
+
+| Table | Purpose |
+|-------|---------|
+| `users` | All accounts (students, employees, nurses, doctors, coordinators, admins) |
+| `roles` | Role definitions |
+| `campuses` | Six UIC campuses |
+| `departments` | Academic/administrative departments |
+| `patients` | Patient profiles linked to users |
+| `consultations` | Consultation records |
+| `referrals` | Doctor referrals from consultations |
+| `medical_records` | Finalized consultation summaries |
+| `medicines` | Master medicine list |
+| `medicine_stock_in` | Batches of stock received per campus |
+| `medicine_stock_out` | Dispense records |
+| `medicine_archived` | Archived (removed) stock |
+| `branch_requests` | Cross-campus medicine requests |
+| `prescriptions` | Prescriptions written by doctors |
+| `messages` | Chat messages |
+| `notification_reads` | Per-user read tracking for notifications |
+| `audit_logs` | System-wide audit trail |
+
+### Naming conventions
+
+- **Primary keys:** `id` (Laravel default)
+- **Foreign keys:** `{singular}_id` — e.g. `campus_id`, `medicine_id`, `user_id`
+- **Timestamps:** `created_at`, `updated_at`
+- **Status enums:** stored as strings (e.g. `pending_doctor`, `in_progress`, `completed`)
+
+### User schema note
+
+`users.google_sub` (Google OAuth subject ID) is **nullable**. Staff-created users do not have one. Google OAuth users always do.
+
+---
+
+## Deployment Notes
+
+### Production checklist
+
+- [ ] Set `APP_ENV=production`, `APP_DEBUG=false`
+- [ ] Generate fresh `APP_KEY` and `JWT_SECRET`
+- [ ] Configure production MS SQL connection in `.env`
+- [ ] Set `GOOGLE_REDIRECT_URI` to the production URL
+- [ ] Update `FRONTEND_URL` and `CORS_ALLOWED_ORIGINS` to the production frontend URL
+- [ ] Build the frontend: `npm run build`
+- [ ] Serve `frontend/dist/` via a web server (Nginx, Apache)
+- [ ] Run `php artisan config:cache` and `php artisan route:cache`
+- [ ] Ensure `storage/` and `bootstrap/cache/` are writable
+- [ ] Enable HTTPS
+
+### Recommended architecture
+
+- Backend and frontend served from the same domain, or
+- Backend at `api.example.edu.ph`, frontend at `example.edu.ph` with proper CORS
+
+---
+
+## Known Limitations and Remaining Work
+
+### Completed
+- Full inventory management (stock-in, dispense, archive, restore, cross-campus)
+- Branch requests with approve/reject/complete workflow
+- Real dispensed-medicines report with month/year filtering
+- Chat (cross-campus, group by campus, unread badges)
+- Notifications (backend + bell dropdown + hub page)
+- Admin user CRUD including field editing
+- Print prescription + print inventory report (two tabs)
+- MS SQL compatibility (driver-agnostic SQL)
+- MedicineSeeder for fresh installs
+
+### Remaining polish
+- **Duplicate migrations** — three identical `make_google_sub_nullable` migrations exist.
+- **Sidebar duplication** — 12 pages each render their own sidebar inline.
+- **Frontend bundle size** — ~615 KB minified.
+- **`.bak` files** — many timestamped `.bak` files exist in `frontend/src/pages/`.
+
+### Optional future enhancements
+- Automated tests (currently none)
+- WebSocket-based chat for real-time delivery (currently 8-second polling)
+- Attachment support in chat
+- Inventory report export to PDF/Excel
+
+---
+
+## History
+
+This system is the result of merging two UIC student projects:
+
+1. **HSMS** — the original Health Services Management System (System A)
+2. **HIMS** — the Health Inventory Management System (System B)
+
+The merge used System A's split SPA + REST API architecture as the base, and ported System B's inventory features as new modules.
+
+- Original System A README: [docs/original-hsms-readme.md](docs/original-hsms-readme.md)
+- Phase-by-phase development docs: [docs/](docs/)
+
+---
+
+## License
+
+Internal UIC project. Not for public distribution.

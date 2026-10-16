@@ -1,15 +1,24 @@
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeftCircle, Info, LayoutDashboard, Package, Stethoscope, type LucideIcon } from 'lucide-react';
+import {
+  Bell,
+  ArrowLeftCircle,
+  Info,
+  LayoutDashboard,
+  Package,
+  Stethoscope,
+  MessageSquare,
+  type LucideIcon,
+} from 'lucide-react';
 import { StatusBadge } from '../components/StatusBadge';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../lib/api';
-import { confirmAction, notifyError, notifyInfo, notifySuccess } from '../lib/alerts';
+import { confirmAction, notifyError, notifySuccess } from '../lib/alerts';
 import { formatDateTime, userDisplayName } from '../lib/format';
 import { getErrorMessage } from '../lib/http';
 import type { PaginatedResponse, Referral } from '../types/hsms';
 
-type DoctorSection = 'dashboard' | 'inventory' | 'referrals' | 'about';
+type DoctorSection = 'dashboard' | 'inventory' | 'referrals' | 'about' | 'chat' | 'notifications';
 
 interface DoctorMenuItem {
   key: DoctorSection;
@@ -22,6 +31,24 @@ const doctorMenuItems: DoctorMenuItem[] = [
   { key: 'inventory', label: 'Inventory', icon: Package },
   { key: 'referrals', label: 'Referrals', icon: Stethoscope },
   { key: 'about', label: 'About', icon: Info },
+  {
+    key: 'chat',
+    label: 'Messages',
+    icon: MessageSquare,
+  },
+  {
+    key: 'notifications',
+    label: 'Notifications',
+    icon: Bell,
+  },
+];
+const doctorInventorySubItems: Array<{ key: string; label: string; path: string }> = [
+  { key: 'inventory_dashboard', label: 'Dashboard', path: '/doctor/inventory' },
+  { key: 'inventory_stocks', label: 'Stocks', path: '/doctor/inventory/stocks' },
+  { key: 'inventory_requests', label: 'Branch Requests', path: '/doctor/inventory/requests' },
+  { key: 'inventory_history', label: 'History', path: '/doctor/inventory/history' },
+  { key: 'inventory_reports', label: 'Reports', path: '/doctor/inventory/reports' },
+  { key: 'inventory_about', label: 'About', path: '/doctor/inventory/about' },
 ];
 
 const referralStatusOptions = [
@@ -63,6 +90,7 @@ export function DoctorReferralsPage() {
   const { referralId: rawReferralId } = useParams<{ referralId: string }>();
 
   const [activeSection, setActiveSection] = useState<DoctorSection>('referrals');
+  const [isInventoryOpen, setIsInventoryOpen] = useState(false);
   const [referrals, setReferrals] = useState<Referral[]>([]);
   const [statusFilter, setStatusFilter] = useState('');
   const [search, setSearch] = useState('');
@@ -163,8 +191,18 @@ export function DoctorReferralsPage() {
       return;
     }
 
+    if (section === 'chat') {
+      navigate('/doctor/chat');
+      return;
+    }
+
+    if (section === 'notifications') {
+      navigate('/doctor/notifications');
+      return;
+    }
+
     if (section === 'inventory') {
-      void notifyInfo('Inventory is coming soon.', 'Coming Soon');
+      setIsInventoryOpen((current) => !current);
       return;
     }
 
@@ -176,6 +214,10 @@ export function DoctorReferralsPage() {
     if (section === 'about') {
       navigate('/doctor/about');
     }
+  };
+
+  const onInventorySubItemClick = (path: string): void => {
+    navigate(path);
   };
 
   const updateReferral = async (action: 'in_progress' | 'complete'): Promise<void> => {
@@ -247,6 +289,20 @@ export function DoctorReferralsPage() {
                   <MenuIcon className="nurse-side-icon" size={18} strokeWidth={2.2} />
                   <span className="nurse-side-label">{menuItem.label}</span>
                 </button>
+                {menuItem.key === 'inventory' && isInventoryOpen && (
+                  <div className="nurse-sidebar-submenu open" role="menu">
+                    {doctorInventorySubItems.map((subItem) => (
+                      <button
+                        key={subItem.key}
+                        className="nurse-search-option"
+                        onClick={() => onInventorySubItemClick(subItem.path)}
+                        type="button"
+                      >
+                        <span>{subItem.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}

@@ -105,7 +105,7 @@ class AuthController extends Controller
             ->whereRaw('LOWER(email) = ?', [Str::lower($credentials['email'])])
             ->first();
 
-        $allowedRoles = ['employee', 'nurse', 'doctor', 'admin'];
+        $allowedRoles = ['employee', 'nurse', 'doctor', 'admin', 'coordinator'];
 
         if (
             ! $user

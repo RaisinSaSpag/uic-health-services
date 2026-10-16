@@ -3452,3 +3452,231 @@ pre {
   border-color: #d94e70;
   box-shadow: 0 0 0 3px rgba(217, 78, 112, 0.15);
 }
+
+/* ============================================================ */
+/* Notification dropdown (bell)                                  */
+/* ============================================================ */
+
+.notification-bell-wrap {
+  position: relative;
+  display: inline-block;
+}
+
+.notification-dropdown {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.5rem);
+  width: 22rem;
+  max-width: calc(100vw - 2rem);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
+  z-index: 60;
+  overflow: hidden;
+  animation: fadeUp 180ms ease-out;
+}
+
+.notification-dropdown-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+  background: rgba(253, 245, 248, 0.6);
+}
+
+.notification-dropdown-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: #7f1f43;
+}
+
+.notification-dropdown-close {
+  padding: 0.25rem;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--muted);
+  border-radius: 6px;
+}
+
+.notification-dropdown-close:hover {
+  background: rgba(212, 73, 116, 0.1);
+  color: var(--primary);
+}
+
+.notification-dropdown-list {
+  max-height: 22rem;
+  overflow-y: auto;
+}
+
+.notification-dropdown-empty {
+  padding: 1.75rem 1rem;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.notification-item {
+  display: flex;
+  gap: 0.65rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.82rem;
+}
+
+.notification-item:last-child {
+  border-bottom: none;
+}
+
+.notification-item.unread {
+  background: rgba(253, 245, 248, 0.55);
+}
+
+.notification-item-icon {
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+
+.notification-item-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.notification-item-message {
+  color: #333;
+  line-height: 1.4;
+  margin: 0;
+  word-break: break-word;
+}
+
+.notification-item-time {
+  display: block;
+  font-size: 0.7rem;
+  color: var(--muted);
+  margin-top: 0.25rem;
+}
+
+/* ============================================================ */
+/* Print page — tab bar + inventory sheet                        */
+/* ============================================================ */
+
+.nurse-print-tabs {
+  display: flex;
+  gap: 0.35rem;
+  margin: 0.5rem 0 0.9rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.nurse-print-tab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 0.5rem 0.85rem;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 120ms, border-color 120ms;
+}
+
+.nurse-print-tab:hover {
+  color: var(--primary);
+}
+
+.nurse-print-tab.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+
+/* Print-only inventory sheet — hidden on screen */
+.nurse-print-only-inventory {
+  display: none;
+}
+
+@media print {
+  /* Existing print rules hide everything, but we need to show the inventory sheet */
+  .nurse-print-only-inventory {
+    display: block !important;
+    visibility: visible !important;
+  }
+
+  .nurse-print-only-inventory * {
+    visibility: visible !important;
+  }
+
+  .nurse-print-inventory-sheet {
+    padding: 15mm;
+    background: #ffffff;
+    color: #000;
+    font-size: 11pt;
+  }
+
+  .nurse-print-inventory-header {
+    margin-bottom: 12pt;
+    border-bottom: 1.5px solid #000;
+    padding-bottom: 8pt;
+  }
+
+  .nurse-print-inventory-header h2 {
+    margin: 0 0 4pt;
+    font-size: 16pt;
+  }
+
+  .nurse-print-inventory-header p {
+    margin: 0;
+    font-size: 10pt;
+    color: #333;
+  }
+
+  .nurse-print-inventory-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12pt 0;
+    font-size: 10pt;
+  }
+
+  .nurse-print-inventory-table th,
+  .nurse-print-inventory-table td {
+    border: 1px solid #333;
+    padding: 6pt 8pt;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .nurse-print-inventory-table th {
+    background: #f2f2f2;
+    font-weight: 700;
+  }
+
+  .nurse-print-inventory-table td.bad {
+    color: #b00020;
+    font-weight: 600;
+  }
+
+  .nurse-print-inventory-table td.warn {
+    color: #b26a00;
+    font-weight: 600;
+  }
+
+  .nurse-print-inventory-footer {
+    margin-top: 12pt;
+    padding-top: 6pt;
+    border-top: 1px solid #999;
+    font-size: 9pt;
+    text-align: center;
+    color: #666;
+  }
+}
+
+/* Ensure other print-only blocks hide the UI */
+@media print {
+  .no-print,
+  .nurse-print-preview {
+    display: none !important;
+  }
+}

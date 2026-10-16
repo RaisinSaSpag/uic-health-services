@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  ArrowLeft,
   AlertTriangle,
   CheckCircle2,
   Package,
@@ -10,6 +11,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useInventoryBasePath } from '../lib/useInventoryBasePath';
 import { api } from '../lib/api';
 import { notifyError } from '../lib/alerts';
 import { formatDate, userDisplayName } from '../lib/format';
@@ -63,6 +65,16 @@ function truncateText(value: string, maxLength = 60): string {
 export function NurseInventoryDashboardPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { basePath } = useInventoryBasePath();
+
+  const resolvedMenuItems = useMemo(
+    () =>
+      menuItems.map((item) => ({
+        ...item,
+        path: item.path.replace('/nurse/inventory', basePath),
+      })),
+    [basePath],
+  );
 
   const [activeSection, setActiveSection] = useState<InventorySection>('dashboard');
   const [stats, setStats] = useState<DashboardStats>({
@@ -165,7 +177,18 @@ export function NurseInventoryDashboardPage() {
         </div>
 
         <nav className="nurse-sidebar-nav" aria-label="Inventory navigation">
-          {menuItems.map((item) => {
+              <div className="nurse-nav-item">
+                <button
+                  className="nurse-side-link back-to-dashboard"
+                  onClick={() => navigate(basePath === '/doctor/inventory' ? '/doctor' : '/nurse')}
+                  type="button"
+                >
+                  <ArrowLeft className="nurse-side-icon" size={18} strokeWidth={2.2} />
+                  <span className="nurse-side-label">Back to Dashboard</span>
+                </button>
+              </div>
+
+              {resolvedMenuItems.map((item) => {
             const Icon = item.icon;
             return (
               <div className="nurse-nav-item" key={item.key}>

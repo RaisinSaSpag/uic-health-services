@@ -3,6 +3,7 @@
 namespace App\Services\Clinic;
 
 use App\Models\Medicine;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Database\Eloquent\Collection;
 use RuntimeException;
 
@@ -116,4 +117,42 @@ class MedicineService
 
         $medicine->delete();
     }
+    
+    /**
+     * Aggregate dispensed quantities per medicine for a campus,
+     * optionally filtered by month/year.
+     *
+     * @return array<int, array{name: string, category: ?string, medicine_stock_out: int}>
+     */
+    public function stockOutReport(int $campusId, ?int $month = null, ?int $year = null): array
+    {
+        $query = DB::table('medicine_stock_out as mso')
+            ->join('medicine_stock_in as msi', 'mso.stock_in_id', '=', 'msi.id')
+            ->join('medicines as m', 'msi.medicine_id', '=', 'm.id')
+            ->where('msi.campus_id', $campusId)
+            ->groupBy('m.id', 'm.name', 'm.category')
+            ->selectRaw('m.name as name')
+            ->selectRaw('m.category as category')
+            ->selectRaw('COALESCE(SUM(mso.quantity_dispensed), 0) as medicine_stock_out')
+            ->orderByDesc('medicine_stock_out');
+
+        if ($year !== null) {
+            $query->whereYear('mso.dispensed_at', $year);
+        }
+
+        if ($month !== null) {
+            $query->whereMonth('mso.dispensed_at', $month);
+        }
+
+        return $query->get()
+            ->map(static function ($row): array {
+                return [
+                    'name' => (string) $row->name,
+                    'category' => $row->category !== null ? (string) $row->category : null,
+                    'medicine_stock_out' => (int) $row->medicine_stock_out,
+                ];
+            })
+            ->all();
+    }
+
 }

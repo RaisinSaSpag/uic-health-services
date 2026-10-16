@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
+  Bell,
   ArrowLeftCircle,
   BarChart3,
   Briefcase,
@@ -16,16 +17,17 @@ import {
   Search,
   Stethoscope,
   type LucideIcon,
+  MessageSquare,
 } from 'lucide-react';
 import { StatusBadge } from '../components/StatusBadge';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../lib/api';
-import { notifyError, notifyInfo } from '../lib/alerts';
+import { notifyError } from '../lib/alerts';
 import { formatDate, formatDateTime, humanizeStatus, userDisplayName } from '../lib/format';
 import { getErrorMessage } from '../lib/http';
 import type { Consultation, PaginatedResponse, Patient } from '../types/hsms';
 
-type NurseSection = 'dashboard' | 'search' | 'print' | 'reports' | 'inventory' | 'referrals' | 'about';
+type NurseSection = 'dashboard' | 'search' | 'print' | 'reports' | 'inventory' | 'referrals' | 'about' | 'chat' | 'notifications';
 type NurseRecordsPatientType = 'student' | 'employee';
 type DetailTab = 'patient_profile' | 'medical_history' | 'past_consultations' | 'remark_records';
 
@@ -79,6 +81,16 @@ const nurseMenuItems: NurseMenuItem[] = [
     key: 'about',
     label: 'About',
     icon: Info,
+  },
+  {
+    key: 'chat',
+    label: 'Messages',
+    icon: MessageSquare,
+  },
+  {
+    key: 'notifications',
+    label: 'Notifications',
+    icon: Bell,
   },
 ];
 
@@ -341,7 +353,17 @@ export function NursePatientDetailPage() {
 
   const onMenuClick = (section: NurseSection): void => {
     if (section === 'inventory') {
-      void notifyInfo('Inventory is coming soon.', 'Coming Soon');
+      navigate('/nurse/inventory');
+      return;
+    }
+
+    if (section === 'chat') {
+      navigate('/nurse/chat');
+      return;
+    }
+
+    if (section === 'notifications') {
+      navigate('/nurse/notifications');
       return;
     }
 

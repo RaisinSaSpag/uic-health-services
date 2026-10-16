@@ -3,11 +3,13 @@ import { AppShell } from './components/AppShell';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { RoleRoute } from './components/RoleRoute';
 import { AdminAuditPage } from './pages/AdminAuditPage';
+import { ChatPage } from './pages/ChatPage';
 import { AuthCallbackPage } from './pages/AuthCallbackPage';
 import { DoctorAboutPage } from './pages/DoctorAboutPage';
 import { DoctorDashboardPage } from './pages/DoctorDashboardPage';
 import { DoctorReferralsPage } from './pages/DoctorReferralsPage';
 import { LoginPage } from './pages/LoginPage';
+import { NotificationPage } from './pages/NotificationPage';
 import { NurseAboutPage } from './pages/NurseAboutPage';
 import { NurseConsultationFormPage } from './pages/NurseConsultationFormPage';
 import { NurseConsultationTypePage } from './pages/NurseConsultationTypePage';
@@ -24,6 +26,8 @@ import { PatientPortalPage } from './pages/PatientPortalPage';
 import { RoleLandingPage } from './pages/RoleLandingPage';
 import { NurseInventoryHistoryPage } from './pages/NurseInventoryHistoryPage';
 import { NurseInventoryAboutPage } from './pages/NurseInventoryAboutPage';
+import { NurseInventoryReportsPage } from './pages/NurseInventoryReportsPage';
+
 
 
 function App() {
@@ -161,6 +165,15 @@ function App() {
              }
            />
 
+          <Route
+            path="nurse/inventory/reports"
+              element={
+              <RoleRoute roles={['nurse', 'admin']}>
+                <NurseInventoryReportsPage />
+              </RoleRoute>
+             }
+           />
+
           {/* ============ Doctor Module ============ */}
           <Route
             path="doctor"
@@ -198,6 +211,62 @@ function App() {
             }
           />
 
+                    {/* ============ Doctor Inventory (read-only) ============ */}
+          <Route
+            path="doctor/inventory"
+            element={
+              <RoleRoute roles={['doctor', 'admin']}>
+                <NurseInventoryDashboardPage />
+              </RoleRoute>
+            }
+          />
+
+          <Route
+            path="doctor/inventory/stocks"
+            element={
+              <RoleRoute roles={['doctor', 'admin']}>
+                <NurseInventoryStocksPage />
+              </RoleRoute>
+            }
+          />
+
+          <Route
+            path="doctor/inventory/requests"
+            element={
+              <RoleRoute roles={['doctor', 'admin']}>
+                <NurseInventoryRequestsPage />
+              </RoleRoute>
+            }
+          />
+
+          <Route
+            path="doctor/inventory/history"
+            element={
+              <RoleRoute roles={['doctor', 'admin']}>
+                <NurseInventoryHistoryPage />
+              </RoleRoute>
+            }
+          />
+
+          <Route
+            path="doctor/inventory/reports"
+            element={
+              <RoleRoute roles={['doctor', 'admin']}>
+                <NurseInventoryReportsPage />
+              </RoleRoute>
+            }
+          />
+
+          <Route
+            path="doctor/inventory/about"
+            element={
+              <RoleRoute roles={['doctor', 'admin']}>
+                <NurseInventoryAboutPage />
+              </RoleRoute>
+            }
+          />
+
+
           <Route
             path="nurse/referrals"
             element={
@@ -224,6 +293,42 @@ function App() {
               </RoleRoute>
             }
           />
+                    <Route
+            path="nurse/chat"
+            element={
+              <RoleRoute roles={['nurse', 'admin']}>
+                <ChatPage />
+              </RoleRoute>
+            }
+          />
+
+          <Route
+            path="doctor/chat"
+            element={
+              <RoleRoute roles={['doctor', 'admin']}>
+                <ChatPage />
+              </RoleRoute>
+            }
+          />
+
+                    <Route
+            path="nurse/notifications"
+            element={
+              <RoleRoute roles={['nurse', 'admin']}>
+                <NotificationPage />
+              </RoleRoute>
+            }
+          />
+
+          <Route
+            path="doctor/notifications"
+            element={
+              <RoleRoute roles={['doctor', 'admin']}>
+                <NotificationPage />
+              </RoleRoute>
+            }
+          />
+
         </Route>
       </Route>
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import {
+  Bell,
   Activity,
   ArrowLeftCircle,
   BarChart3,
@@ -16,15 +17,16 @@ import {
   Search,
   Stethoscope,
   type LucideIcon,
+  MessageSquare,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../lib/api';
-import { notifyError, notifyInfo } from '../lib/alerts';
+import { notifyError } from '../lib/alerts';
 import { getErrorMessage } from '../lib/http';
 import { userDisplayName } from '../lib/format';
 import type { Patient } from '../types/hsms';
 
-type NurseSection = 'dashboard' | 'search' | 'print' | 'reports' | 'inventory' | 'referrals' | 'about';
+type NurseSection = 'dashboard' | 'search' | 'print' | 'reports' | 'inventory' | 'referrals' | 'about' | 'chat' | 'notifications';
 type NurseRecordsPatientType = 'student' | 'employee';
 type ConsultationTypeParam = 'walk-in' | 'scheduled';
 
@@ -69,6 +71,16 @@ const nurseMenuItems: NurseMenuItem[] = [
     key: 'about',
     label: 'About',
     icon: Info,
+  },
+  {
+    key: 'chat',
+    label: 'Messages',
+    icon: MessageSquare,
+  },
+  {
+    key: 'notifications',
+    label: 'Notifications',
+    icon: Bell,
   },
 ];
 
@@ -123,7 +135,17 @@ export function NurseConsultationTypePage() {
 
   const onMenuClick = (section: NurseSection): void => {
     if (section === 'inventory') {
-      void notifyInfo('Inventory is coming soon.', 'Coming Soon');
+      navigate('/nurse/inventory');
+      return;
+    }
+
+    if (section === 'chat') {
+      navigate('/nurse/chat');
+      return;
+    }
+
+    if (section === 'notifications') {
+      navigate('/nurse/notifications');
       return;
     }
 

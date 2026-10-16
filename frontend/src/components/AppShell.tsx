@@ -1,6 +1,6 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { Bell } from 'lucide-react';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { NotificationBell } from './NotificationBell';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../lib/api';
 import { notifyBanner } from '../lib/alerts';
@@ -39,11 +39,10 @@ const navItems: NavItem[] = [
 export function AppShell() {
   const { user, hasRole, signOut } = useAuth();
   const location = useLocation();
-  const navigate = useNavigate();
 
   const currentRole = normalizeRoleName(user?.role);
   const isClinician = currentRole === 'nurse' || currentRole === 'doctor';
-  const [notificationCount, setNotificationCount] = useState(0);
+  const [, setNotificationCount] = useState(0);
   const [isBannerEnabled, setIsBannerEnabled] = useState(true);
   const previousNotificationCountRef = useRef<number | null>(null);
 
@@ -154,18 +153,7 @@ export function AppShell() {
     };
   }, [isClinician, pollNotifications]);
 
-  const onNotificationClick = (): void => {
-    if (currentRole === 'doctor') {
-      navigate('/doctor/referrals');
-      return;
-    }
-
-    if (currentRole === 'nurse') {
-      navigate('/nurse/referrals');
-    }
-  };
-
-  const onToggleBanners = (): void => {
+    const onToggleBanners = (): void => {
     setIsBannerEnabled((current) => {
       const nextValue = !current;
 
@@ -176,6 +164,7 @@ export function AppShell() {
       return nextValue;
     });
   };
+
 
   const hideNurseDashboardNavItem = currentRole === 'nurse' && location.pathname.startsWith('/nurse');
   const visibleNav = navItems
@@ -230,17 +219,7 @@ export function AppShell() {
               >
                 Banners: {isBannerEnabled ? 'On' : 'Off'}
               </button>
-
-              <button
-                className="button ghost topbar-notification"
-                onClick={onNotificationClick}
-                type="button"
-                aria-label="Notifications"
-                title={currentRole === 'doctor' ? 'View pending referrals' : 'View referral updates'}
-              >
-                <Bell size={19} strokeWidth={2.3} />
-                {notificationCount > 0 && <span className="topbar-notification-dot" aria-hidden="true" />}
-              </button>
+            <NotificationBell />
             </>
           )}
           <button className="button ghost" onClick={signOut} type="button">

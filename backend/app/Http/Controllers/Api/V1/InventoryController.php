@@ -106,4 +106,39 @@ class InventoryController extends Controller
 
         return response()->json($stock);
     }
+    public function archived(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'campus_id' => ['required', 'integer', 'min:1'],
+        ]);
+
+        $items = $this->inventoryService->listArchived((int) $validated['campus_id']);
+
+        return response()->json($items);
+    }
+
+    public function restoreArchived(Request $request, int $id): JsonResponse
+    {
+        try {
+            $restored = $this->inventoryService->restoreArchived($id, $request->user()->id);
+
+            return response()->json([
+                'message' => 'Archive record restored.',
+                'restored_id' => $restored->id,
+            ]);
+        } catch (RuntimeException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
+    }
+
+    public function deleteArchived(Request $request, int $id): JsonResponse
+    {
+        try {
+            $this->inventoryService->deleteArchived($id, $request->user()->id);
+
+            return response()->json(['message' => 'Archive record permanently deleted.']);
+        } catch (RuntimeException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
+    }
 }

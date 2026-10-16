@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  Bell,
   BarChart3,
   Briefcase,
   ChevronDown,
@@ -12,12 +13,12 @@ import {
   Search,
   Stethoscope,
   type LucideIcon,
+  MessageSquare,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { notifyInfo } from '../lib/alerts';
 import { userDisplayName } from '../lib/format';
 
-type NurseSection = 'dashboard' | 'search' | 'print' | 'reports' | 'inventory' | 'referrals' | 'about';
+type NurseSection = 'dashboard' | 'search' | 'print' | 'reports' | 'inventory' | 'referrals' | 'about' | 'chat' | 'notifications';
 type SearchTarget = 'student' | 'employee';
 
 interface NurseMenuItem {
@@ -67,6 +68,16 @@ const nurseMenuItems: NurseMenuItem[] = [
     key: 'about',
     label: 'About',
     icon: Info,
+  },
+  {
+    key: 'chat',
+    label: 'Messages',
+    icon: MessageSquare,
+  },
+  {
+    key: 'notifications',
+    label: 'Notifications',
+    icon: Bell,
   },
 ];
 
@@ -127,7 +138,17 @@ export function NurseAboutPage() {
 
   const onMenuClick = (section: NurseSection): void => {
     if (section === 'inventory') {
-      void notifyInfo('Inventory is coming soon.', 'Coming Soon');
+      navigate('/nurse/inventory');
+      return;
+    }
+
+    if (section === 'chat') {
+      navigate('/nurse/chat');
+      return;
+    }
+
+    if (section === 'notifications') {
+      navigate('/nurse/notifications');
       return;
     }
 

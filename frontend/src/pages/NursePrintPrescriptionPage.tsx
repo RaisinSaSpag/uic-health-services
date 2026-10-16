@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  Bell,
   BarChart3,
   Briefcase,
   ChevronDown,
@@ -9,16 +10,21 @@ import {
   LayoutDashboard,
   Package,
   Printer,
+  RefreshCw,
   Search,
   Stethoscope,
   type LucideIcon,
+  MessageSquare,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { notifyInfo } from '../lib/alerts';
+import { api } from '../lib/api';
+import { notifyError } from '../lib/alerts';
 import { userDisplayName } from '../lib/format';
+import { getErrorMessage } from '../lib/http';
 
-type NurseSection = 'dashboard' | 'search' | 'print' | 'reports' | 'inventory' | 'referrals' | 'about';
+type NurseSection = 'dashboard' | 'search' | 'print' | 'reports' | 'inventory' | 'referrals' | 'about' | 'chat' | 'notifications';
 type SearchTarget = 'student' | 'employee';
+type PrintTab = 'prescription' | 'inventory';
 
 interface NurseMenuItem {
   key: NurseSection;
@@ -26,58 +32,57 @@ interface NurseMenuItem {
   icon: LucideIcon;
 }
 
+interface InventoryItem {
+  id: number;
+  medicine_id: number;
+  campus_id: number;
+  quantity: number;
+  available_quantity?: number;
+  date_received: string;
+  expiration_date: string;
+  medicine?: {
+    id: number;
+    name: string;
+    category: string;
+  };
+}
+
 const nurseMenuItems: NurseMenuItem[] = [
+  { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { key: 'search', label: 'Search Records', icon: Search },
+  { key: 'print', label: 'Print', icon: Printer },
+  { key: 'reports', label: 'Reports', icon: BarChart3 },
+  { key: 'inventory', label: 'Inventory', icon: Package },
+  { key: 'referrals', label: 'Referrals', icon: Stethoscope },
+  { key: 'about', label: 'About', icon: Info },
+  { key: 'chat', label: 'Messages', icon: MessageSquare },
   {
-    key: 'dashboard',
-    label: 'Dashboard',
-    icon: LayoutDashboard,
-  },
-  {
-    key: 'search',
-    label: 'Search Records',
-    icon: Search,
-  },
-  {
-    key: 'print',
-    label: 'Print Prescription',
-    icon: Printer,
-  },
-  {
-    key: 'reports',
-    label: 'Reports',
-    icon: BarChart3,
-  },
-  {
-    key: 'inventory',
-    label: 'Inventory',
-    icon: Package,
-  },
-  {
-    key: 'referrals',
-    label: 'Referrals',
-    icon: Stethoscope,
-  },
-  {
-    key: 'about',
-    label: 'About',
-    icon: Info,
+    key: 'notifications',
+    label: 'Notifications',
+    icon: Bell,
   },
 ];
 
 const searchTargetOptions: Array<{ key: SearchTarget; label: string; icon: LucideIcon }> = [
-  {
-    key: 'student',
-    label: 'Student',
-    icon: GraduationCap,
-  },
-  {
-    key: 'employee',
-    label: 'Employee',
-    icon: Briefcase,
-  },
+  { key: 'student', label: 'Student', icon: GraduationCap },
+  { key: 'employee', label: 'Employee', icon: Briefcase },
 ];
 
 const prescriptionAssetPath = '/prescription.png';
+
+function formatDate(value: string): string {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function daysUntil(value: string): number | null {
+  if (!value) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return Math.floor((d.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+}
 
 export function NursePrintPrescriptionPage() {
   const { user } = useAuth();
@@ -85,18 +90,27 @@ export function NursePrintPrescriptionPage() {
   const printDelayTimerRef = useRef<number | null>(null);
 
   const [activeSection, setActiveSection] = useState<NurseSection>('print');
+  const [activeTab, setActiveTab] = useState<PrintTab>('prescription');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchTarget, setSearchTarget] = useState<SearchTarget>('student');
   const [isPreparingPrint, setIsPreparingPrint] = useState(false);
 
+  // Inventory state
+  const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [inventoryLoading, setInventoryLoading] = useState(false);
+  const [inventoryLoaded, setInventoryLoaded] = useState(false);
+
   const nurseName = useMemo(() => userDisplayName(user), [user]);
   const campusName = useMemo(() => user?.campus ?? 'Campus not assigned', [user]);
+  const campusId = user?.campus_id ?? null;
 
+  // Preload the prescription background image
   useEffect(() => {
     const image = new window.Image();
     image.src = prescriptionAssetPath;
   }, []);
 
+  // Reset isPreparingPrint on print finish
   useEffect(() => {
     const onAfterPrint = (): void => {
       setIsPreparingPrint(false);
@@ -114,9 +128,43 @@ export function NursePrintPrescriptionPage() {
     };
   }, []);
 
+  // Load inventory when the tab is opened (once)
+  const loadInventory = useCallback(async () => {
+    if (!campusId) return;
+
+    setInventoryLoading(true);
+    try {
+      const res = await api.get<InventoryItem[]>('/inventory/available', {
+        params: { campus_id: campusId },
+      });
+      setInventory(Array.isArray(res.data) ? res.data : []);
+      setInventoryLoaded(true);
+    } catch (err) {
+      void notifyError(getErrorMessage(err, 'Unable to load inventory.'), 'Load Failed');
+    } finally {
+      setInventoryLoading(false);
+    }
+  }, [campusId]);
+
+  useEffect(() => {
+    if (activeTab === 'inventory' && !inventoryLoaded && !inventoryLoading) {
+      void loadInventory();
+    }
+  }, [activeTab, inventoryLoaded, inventoryLoading, loadInventory]);
+
   const onMenuClick = (section: NurseSection): void => {
     if (section === 'inventory') {
-      void notifyInfo('Inventory is coming soon.', 'Coming Soon');
+      navigate('/nurse/inventory');
+      return;
+    }
+
+    if (section === 'chat') {
+      navigate('/nurse/chat');
+      return;
+    }
+
+    if (section === 'notifications') {
+      navigate('/nurse/notifications');
       return;
     }
 
@@ -162,10 +210,8 @@ export function NursePrintPrescriptionPage() {
     navigate(`/nurse/records/${target}`);
   };
 
-  const onPrintPrescription = (): void => {
-    if (isPreparingPrint) {
-      return;
-    }
+  const triggerPrint = (): void => {
+    if (isPreparingPrint) return;
 
     setIsPreparingPrint(true);
 
@@ -180,6 +226,14 @@ export function NursePrintPrescriptionPage() {
       }, 90);
     });
   };
+
+  const inventorySorted = useMemo(() => {
+    return [...inventory].sort((a, b) => {
+      const an = (a.medicine?.name ?? '').toLowerCase();
+      const bn = (b.medicine?.name ?? '').toLowerCase();
+      return an.localeCompare(bn);
+    });
+  }, [inventory]);
 
   return (
     <div className="nurse-dashboard-page">
@@ -254,40 +308,178 @@ export function NursePrintPrescriptionPage() {
             </div>
           </div>
 
-          <article className="nurse-print-document-card">
-            <header className="nurse-print-document-head">
-              <div>
-                <h3>Prescription</h3>
-                <p className="nurse-print-document-meta">Print prescription form</p>
+          <div className="nurse-print-tabs no-print">
+            <button
+              type="button"
+              className={`nurse-print-tab${activeTab === 'prescription' ? ' active' : ''}`}
+              onClick={() => setActiveTab('prescription')}
+            >
+              Prescription
+            </button>
+            <button
+              type="button"
+              className={`nurse-print-tab${activeTab === 'inventory' ? ' active' : ''}`}
+              onClick={() => setActiveTab('inventory')}
+            >
+              Inventory
+            </button>
+          </div>
+
+          {activeTab === 'prescription' && (
+            <article className="nurse-print-document-card">
+              <header className="nurse-print-document-head">
+                <div>
+                  <h3>Prescription</h3>
+                  <p className="nurse-print-document-meta">Print prescription form</p>
+                </div>
+
+                <button
+                  className={`button nurse-print-action-button${isPreparingPrint ? ' is-preparing' : ''}`}
+                  onClick={triggerPrint}
+                  type="button"
+                  aria-busy={isPreparingPrint}
+                  disabled={isPreparingPrint}
+                >
+                  <Printer
+                    className={`nurse-print-action-icon${isPreparingPrint ? ' spinning' : ''}`}
+                    size={16}
+                    strokeWidth={2.4}
+                  />
+                  <span>{isPreparingPrint ? 'Opening Print Preview...' : 'Print Prescription'}</span>
+                </button>
+              </header>
+
+              <div className="nurse-print-preview" aria-hidden="true">
+                <Printer className="nurse-print-preview-icon" size={44} strokeWidth={1.8} />
+                <h4>Prescription Form Ready</h4>
+                <p>Click print to continue.</p>
+                <span>Official Rx Prescription format</span>
               </div>
 
-              <button
-                className={`button nurse-print-action-button${isPreparingPrint ? ' is-preparing' : ''}`}
-                onClick={onPrintPrescription}
-                type="button"
-                aria-busy={isPreparingPrint}
-                disabled={isPreparingPrint}
-              >
-                <Printer
-                  className={`nurse-print-action-icon${isPreparingPrint ? ' spinning' : ''}`}
-                  size={16}
-                  strokeWidth={2.4}
-                />
-                <span>{isPreparingPrint ? 'Opening Print Preview...' : 'Print Prescription'}</span>
-              </button>
-            </header>
+              <div className="nurse-print-only-sheet" aria-hidden="true">
+                <img src={prescriptionAssetPath} alt="Prescription form" loading="eager" decoding="async" />
+              </div>
+            </article>
+          )}
 
-            <div className="nurse-print-preview" aria-hidden="true">
-              <Printer className="nurse-print-preview-icon" size={44} strokeWidth={1.8} />
-              <h4>Prescription Form Ready</h4>
-              <p>Click print to continue.</p>
-              <span>Official Rx Prescription format</span>
-            </div>
+          {activeTab === 'inventory' && (
+            <article className="nurse-print-document-card">
+              <header className="nurse-print-document-head">
+                <div>
+                  <h3>Inventory Report</h3>
+                  <p className="nurse-print-document-meta">
+                    {campusName} · {inventorySorted.length} medicine{inventorySorted.length === 1 ? '' : 's'} in stock
+                  </p>
+                </div>
 
-            <div className="nurse-print-only-sheet" aria-hidden="true">
-              <img src={prescriptionAssetPath} alt="Prescription form" loading="eager" decoding="async" />
-            </div>
-          </article>
+                <div className="nurse-dashboard-actions" style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button
+                    className="button ghost"
+                    onClick={() => void loadInventory()}
+                    type="button"
+                    disabled={inventoryLoading}
+                    title="Refresh"
+                  >
+                    <RefreshCw
+                      className={inventoryLoading ? 'spinning' : ''}
+                      size={16}
+                      strokeWidth={2.2}
+                    />
+                  </button>
+                  <button
+                    className={`button nurse-print-action-button${isPreparingPrint ? ' is-preparing' : ''}`}
+                    onClick={triggerPrint}
+                    type="button"
+                    aria-busy={isPreparingPrint}
+                    disabled={isPreparingPrint || inventoryLoading}
+                  >
+                    <Printer
+                      className={`nurse-print-action-icon${isPreparingPrint ? ' spinning' : ''}`}
+                      size={16}
+                      strokeWidth={2.4}
+                    />
+                    <span>{isPreparingPrint ? 'Opening Print Preview...' : 'Print Inventory'}</span>
+                  </button>
+                </div>
+              </header>
+
+              <div className="nurse-print-preview" aria-hidden="true">
+                <Package className="nurse-print-preview-icon" size={44} strokeWidth={1.8} />
+                <h4>Inventory Report Ready</h4>
+                <p>Click print to continue.</p>
+                <span>Current stock, expiration dates, and alerts</span>
+              </div>
+
+              {/* Print-only content — visible only when window.print() is invoked */}
+              <div className="nurse-print-only-inventory" aria-hidden="true">
+                <div className="nurse-print-inventory-sheet">
+                  <header className="nurse-print-inventory-header">
+                    <h2>UIC Health Services — Inventory Report</h2>
+                    <p>
+                      <strong>{campusName}</strong> · Generated by {nurseName} ·{' '}
+                      {new Date().toLocaleString()}
+                    </p>
+                  </header>
+
+                  {inventorySorted.length === 0 ? (
+                    <p style={{ textAlign: 'center', color: '#666', padding: '2rem' }}>
+                      No inventory records found for this campus.
+                    </p>
+                  ) : (
+                    <table className="nurse-print-inventory-table">
+                      <thead>
+                        <tr>
+                          <th style={{ width: '8%' }}>#</th>
+                          <th>Medicine</th>
+                          <th>Category</th>
+                          <th style={{ width: '12%' }}>Qty</th>
+                          <th style={{ width: '18%' }}>Expiration</th>
+                          <th style={{ width: '15%' }}>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {inventorySorted.map((item, index) => {
+                          const qty = item.available_quantity ?? item.quantity ?? 0;
+                          const exp = item.expiration_date;
+                          const days = daysUntil(exp);
+                          let status = 'OK';
+                          let statusClass = '';
+                          if (qty <= 0) {
+                            status = 'Out of Stock';
+                            statusClass = 'bad';
+                          } else if (qty <= 50) {
+                            status = 'Low Stock';
+                            statusClass = 'warn';
+                          } else if (days !== null && days < 0) {
+                            status = 'Expired';
+                            statusClass = 'bad';
+                          } else if (days !== null && days <= 30) {
+                            status = 'Expiring Soon';
+                            statusClass = 'warn';
+                          }
+
+                          return (
+                            <tr key={item.id}>
+                              <td>{index + 1}</td>
+                              <td>{item.medicine?.name ?? `Medicine #${item.medicine_id}`}</td>
+                              <td>{item.medicine?.category ?? '—'}</td>
+                              <td>{qty}</td>
+                              <td>{formatDate(exp)}</td>
+                              <td className={statusClass}>{status}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+
+                  <footer className="nurse-print-inventory-footer">
+                    <p>UIC Health Services Management System · Inventory Report · {new Date().toLocaleDateString()}</p>
+                  </footer>
+                </div>
+              </div>
+            </article>
+          )}
         </section>
       </div>
     </div>

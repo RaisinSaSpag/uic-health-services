@@ -1,4 +1,4 @@
-﻿import { Navigate } from 'react-router-dom';
+import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { normalizeRoleName } from '../lib/format';
 
@@ -11,7 +11,7 @@ export function RoleLandingPage() {
     return <Navigate to="/patient" replace />;
   }
 
-  if (role === 'nurse') {
+  if (role === 'nurse' || role === 'coordinator') {
     return <Navigate to="/nurse" replace />;
   }
 
