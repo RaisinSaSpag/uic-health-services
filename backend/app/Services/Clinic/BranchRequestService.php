@@ -3,6 +3,9 @@
 namespace App\Services\Clinic;
 
 use App\Models\BranchRequest;
+use App\Models\MedicineArchived;
+use App\Models\MedicineStockIn;
+use App\Models\MedicineStockOut;
 use Illuminate\Database\Eloquent\Collection;
 use RuntimeException;
 
@@ -42,6 +45,32 @@ class BranchRequestService
 
         if ($quantity <= 0) {
             throw new RuntimeException('Quantity must be greater than zero.');
+        }
+
+        // Validate that the target campus has enough stock to fulfill this request
+        $availableStock = MedicineStockIn::query()
+            ->where('campus_id', $toCampusId)
+            ->where('medicine_id', $medicineId)
+            ->sum('quantity');
+
+        $dispensedStock = MedicineStockOut::query()
+            ->whereHas('stockIn', function ($q) use ($toCampusId, $medicineId) {
+                $q->where('campus_id', $toCampusId)->where('medicine_id', $medicineId);
+            })
+            ->sum('quantity_dispensed');
+
+        $archivedStock = MedicineArchived::query()
+            ->whereHas('stockIn', function ($q) use ($toCampusId, $medicineId) {
+                $q->where('campus_id', $toCampusId)->where('medicine_id', $medicineId);
+            })
+            ->sum('quantity');
+
+        $available = max(0, $availableStock - $dispensedStock - $archivedStock);
+
+        if ($quantity > $available) {
+            throw new RuntimeException(
+                "Insufficient stock at target campus. Available: {$available}, Requested: {$quantity}"
+            );
         }
 
         $request = BranchRequest::create([

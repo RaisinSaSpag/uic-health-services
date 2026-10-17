@@ -23,12 +23,39 @@ class BranchRequestApiTest extends TestCase
         $toCampus = Campus::query()->skip(1)->first();
         $medicine = Medicine::factory()->create();
 
+        // Seed sufficient stock at the target campus so the request can be fulfilled
+        \App\Models\MedicineStockIn::create([
+            'medicine_id' => $medicine->id,
+            'campus_id' => $toCampus->id,
+            'quantity' => 500,
+            'date_received' => now()->subDays(5),
+            'expiration_date' => now()->addYear(),
+            'received_by' => $nurse->id,
+        ]);
+
         $response = $this->asUser($nurse)->postJson('/api/v1/branch-requests', [
             'from_campus_id' => $fromCampus->id,
             'to_campus_id' => $toCampus->id,
             'medicine_id' => $medicine->id,
             'quantity_requested' => 50,
         ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('status', 'pending')
+            ->assertJsonPath('quantity_requested', 50);
+
+        $this->assertDatabaseHas('branch_requests', [
+            'from_campus_id' => $fromCampus->id,
+            'to_campus_id' => $toCampus->id,
+            'medicine_id' => $medicine->id,
+            'status' => 'pending',
+        ]);
+
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'branch_request.created',
+            'entity_type' => 'branch_request',
+        ]);
+    
 
         $response->assertCreated()
             ->assertJsonPath('status', 'pending')
@@ -212,5 +239,40 @@ class BranchRequestApiTest extends TestCase
         ]);
 
         $response->assertForbidden();
+    }
+
+        public function test_branch_request_fails_when_target_campus_has_insufficient_stock(): void
+    {
+        $nurse = $this->createUserWithRole('nurse');
+        $fromCampus = Campus::query()->first();
+        $toCampus = Campus::query()->skip(1)->first();
+        $medicine = Medicine::factory()->create();
+
+        // Seed only 10 units at target campus
+        \App\Models\MedicineStockIn::create([
+            'medicine_id' => $medicine->id,
+            'campus_id' => $toCampus->id,
+            'quantity' => 10,
+            'date_received' => now()->subDays(5),
+            'expiration_date' => now()->addYear(),
+            'received_by' => $nurse->id,
+        ]);
+
+        // Request 50 — should be rejected
+        $response = $this->asUser($nurse)->postJson('/api/v1/branch-requests', [
+            'from_campus_id' => $fromCampus->id,
+            'to_campus_id' => $toCampus->id,
+            'medicine_id' => $medicine->id,
+            'quantity_requested' => 50,
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJsonFragment(['message' => 'Insufficient stock at target campus. Available: 10, Requested: 50']);
+
+        $this->assertDatabaseMissing('branch_requests', [
+            'to_campus_id' => $toCampus->id,
+            'medicine_id' => $medicine->id,
+            'quantity_requested' => 50,
+        ]);
     }
 }

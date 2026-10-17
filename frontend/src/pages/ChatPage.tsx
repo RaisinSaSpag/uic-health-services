@@ -517,6 +517,13 @@ export function ChatPage() {
                   <input
                     value={newMessage}
                     onChange={(e) => setNewMessage(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        void handleSend(e as unknown as FormEvent<HTMLFormElement>);
+                      }
+                    }}
+                    maxLength={2000}
                     placeholder="Type a message..."
                     disabled={sending}
                     style={{

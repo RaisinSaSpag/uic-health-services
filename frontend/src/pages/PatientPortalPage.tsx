@@ -1654,16 +1654,17 @@ export function PatientPortalPage() {
             )}
           </section>
 
-          <section className="panel">
-            <h3>Clinic Consultation Process</h3>
-            <p className="muted">
-              Consultations are handled in person at the clinic. Your registration is already saved and
-              visible to the nurse dashboard for clinic-side processing.
-            </p>
-            <p className="muted small" style={{ marginTop: '0.4rem' }}>
-              Use Edit Profile above whenever you need to correct your saved details.
-            </p>
-          </section>
+<section>
+  <h3>Clinic Consultation Process</h3>
+  <p className="muted">
+    Consultations are handled in person at the clinic. When you check in, a nurse will record
+    your visit and it will appear in your consultation history below. You do not need to submit
+    anything through this app.
+  </p>
+  <p className="muted small" style={{ marginTop: '0.4rem' }}>
+    Use Edit Profile above to keep your saved details up to date.
+  </p>
+</section>
         </>
       )}
     </div>
