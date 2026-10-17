@@ -35,9 +35,19 @@ abstract class TestCase extends BaseTestCase
             ['name' => 'Main Campus', 'address' => 'On-premise site']
         );
 
+                Campus::firstOrCreate(
+            ['code' => 'BAJADA_GS'],
+            ['name' => 'Bajada Grade School', 'address' => 'Bajada, Davao City']
+        );
+
         Campus::firstOrCreate(
-            ['code' => 'BAJADA'],
-            ['name' => 'Bajada Campus', 'address' => 'Bajada, Davao City']
+            ['code' => 'BAJADA_JHS'],
+            ['name' => 'Bajada Junior High', 'address' => 'Bajada, Davao City']
+        );
+
+        Campus::firstOrCreate(
+            ['code' => 'BAJADA_SHS'],
+            ['name' => 'Bajada Senior High', 'address' => 'Bajada, Davao City']
         );
 
         Campus::firstOrCreate(

@@ -46,19 +46,19 @@ class PatientRegistrationProfileTest extends TestCase
             ->assertJsonPath('patient_type', 'student')
             ->assertJsonPath('student_level', 'basic')
             ->assertJsonPath('grade_level', 'Grade 8')
-            ->assertJsonPath('campus.code', 'BAJADA')
+            ->assertJsonPath('campus.code', 'BAJADA_GS')
             ->assertJsonPath('department.code', 'BASIC_ED');
 
         $this->assertDatabaseHas('patients', [
             'user_id' => $student->id,
             'student_level' => 'basic',
             'grade_level' => 'Grade 8',
-            'campus_id' => $this->campusId('BAJADA'),
+            'campus_id' => $this->campusId('BAJADA_GS'),
         ]);
     }
 
     public function test_senior_high_basic_student_is_assigned_to_bonifacio_campus(): void
-    {
+    { 
         $student = $this->createUserWithRole('student');
         $student->update(['email' => 'jdoe_1234567890@uic.edu.ph']);
 

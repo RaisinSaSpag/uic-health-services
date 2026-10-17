@@ -142,7 +142,7 @@ class GoogleAuthService
         $localPart = Str::before(Str::lower($email), '@');
 
         if (preg_match('/^[a-z][a-z]+_\d{10}$/', $localPart) === 1) {
-            return 'BAJADA';
+            return 'BAJADA_GS';
         }
 
         if (preg_match('/^[a-z][a-z]+_\d{12}$/', $localPart) === 1) {

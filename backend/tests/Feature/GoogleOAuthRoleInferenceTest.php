@@ -38,7 +38,7 @@ class GoogleOAuthRoleInferenceTest extends TestCase
         $this->assertDatabaseHas('users', [
             'email' => $email,
             'role_id' => $this->roleId('student'),
-            'campus_id' => $this->campusId('BAJADA'),
+            'campus_id' => $this->campusId('BAJADA_GS'),
         ]);
     }
 

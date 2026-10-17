@@ -400,7 +400,7 @@ class PatientService
     {
         if ($studentLevel === 'basic') {
             $gradeLevel = (string) ($payload['grade_level'] ?? '');
-            $campusCode = $this->isSeniorHighGradeLevel($gradeLevel) ? 'BONIFACIO' : 'BAJADA';
+            $campusCode = $this->isSeniorHighGradeLevel($gradeLevel) ? 'BONIFACIO' : 'BAJADA_GS';
 
             return $this->campusIdByCode($campusCode);
         }
