@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Models\MedicineStockIn;
 use App\Services\Clinic\InventoryService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -24,6 +25,9 @@ class InventoryController extends Controller
             'expiration_date' => ['required', 'date_format:Y-m-d', 'after:date_received'],
         ]);
 
+        // Validate campus access
+        $this->authorizeCampus($request, (int) $validated['campus_id']);
+
         try {
             $stockIn = $this->inventoryService->stockIn($validated, $request->user()->id);
 
@@ -39,6 +43,10 @@ class InventoryController extends Controller
             'stock_in_id' => ['required', 'integer', 'min:1'],
             'quantity_dispensed' => ['required', 'integer', 'min:1'],
         ]);
+
+        // Validate campus access by looking up the batch
+        $stockIn = MedicineStockIn::findOrFail($validated['stock_in_id']);
+        $this->authorizeCampus($request, (int) $stockIn->campus_id);
 
         try {
             $stockOut = $this->inventoryService->dispense($validated, $request->user()->id);
@@ -56,6 +64,10 @@ class InventoryController extends Controller
             'quantity' => ['required', 'integer', 'min:1'],
             'reason' => ['required', 'string', 'max:255'],
         ]);
+
+        // Validate campus access by looking up the batch
+        $stockIn = MedicineStockIn::findOrFail($validated['stock_in_id']);
+        $this->authorizeCampus($request, (int) $stockIn->campus_id);
 
         try {
             $archived = $this->inventoryService->archive($validated, $request->user()->id);
@@ -106,6 +118,7 @@ class InventoryController extends Controller
 
         return response()->json($stock);
     }
+
     public function archived(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -139,6 +152,31 @@ class InventoryController extends Controller
             return response()->json(['message' => 'Archive record permanently deleted.']);
         } catch (RuntimeException $exception) {
             return response()->json(['message' => $exception->getMessage()], 422);
+        }
+    }
+
+    /**
+     * Ensure the authenticated user has permission to modify stock for the given campus.
+     * Nurses/Coordinators are restricted to their own campus. Admins can manage any campus.
+     */
+    private function authorizeCampus(Request $request, int $campusId): void
+    {
+        $user = $request->user();
+        
+        if (!$user) {
+            abort(401, 'Unauthenticated.');
+        }
+
+        $roleName = strtolower((string) ($user->role?->name ?? ''));
+
+        // Admins have global access
+        if ($roleName === 'admin') {
+            return;
+        }
+
+        // Nurses and Coordinators can only modify their own campus
+        if ((int) $user->campus_id !== (int) $campusId) {
+            abort(403, 'You do not have permission to modify inventory for this campus.');
         }
     }
 }

@@ -306,7 +306,17 @@ class UserController extends Controller
         ];
         $deletedId = $user->id;
 
-        $user->delete();
+        try {
+            $user->delete();
+        } catch (\Illuminate\Database\QueryException $e) {
+            // Check if it's a foreign key constraint violation (SQLSTATE 23000)
+            if ($e->getCode() === '23000' || str_contains($e->getMessage(), 'FOREIGN KEY constraint failed')) {
+                return response()->json([
+                    'message' => 'Cannot delete this user because they have existing records (prescriptions, inventory, etc.) in the system. Consider deactivating their account instead.',
+                ], 409);
+            }
+            throw $e; // Re-throw if it's a different database error
+        }
 
         $this->auditLogService->log(
             actor: $actor,
@@ -320,3 +330,4 @@ class UserController extends Controller
         return response()->json(['success' => true, 'deleted_id' => $deletedId]);
     }
 }
+

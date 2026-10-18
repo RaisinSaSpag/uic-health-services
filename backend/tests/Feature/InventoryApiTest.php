@@ -245,4 +245,83 @@ class InventoryApiTest extends TestCase
 
         $response->assertForbidden();
     }
+
+    public function test_permanently_deleting_archived_stock_removes_the_batch(): void
+    {
+        $nurse = $this->createUserWithRole('nurse');
+        $campus = \App\Models\Campus::query()->first();
+        $medicine = \App\Models\Medicine::factory()->create();
+
+        // Create a batch of 100 units
+        $stockIn = \App\Models\MedicineStockIn::create([
+            'medicine_id' => $medicine->id,
+            'campus_id' => $campus->id,
+            'quantity' => 100,
+            'date_received' => now()->subDays(5),
+            'expiration_date' => now()->addYear(),
+            'received_by' => $nurse->id,
+        ]);
+
+        // Dispense 10 (leaving 90 available)
+        \App\Models\MedicineStockOut::create([
+            'stock_in_id' => $stockIn->id,
+            'quantity_dispensed' => 10,
+            'dispensed_by' => $nurse->id,
+            'dispensed_at' => now(),
+        ]);
+
+        // Archive the remaining 90 (as if they expired)
+        $archivedId = \App\Models\MedicineArchived::create([
+            'stock_in_id' => $stockIn->id,
+            'quantity' => 90,
+            'reason' => 'Expired stock test',
+            'archived_by' => $nurse->id,
+            'archived_at' => now(),
+        ])->id;
+
+        // Now permanently delete the archived record
+        $this->asUser($nurse)->deleteJson('/api/v1/inventory/archived/' . $archivedId)->assertOk();
+
+        // The 90 pills should NOT appear as available (the bug)
+        $response = $this->asUser($nurse)->getJson('/api/v1/inventory/available?campus_id=' . $campus->id);
+        $response->assertOk();
+        $this->assertCount(0, $response->json());
+
+        // The batch quantity should be reduced to 10 (100 - 90 deleted)
+        $this->assertDatabaseHas('medicine_stock_in', [
+            'id' => $stockIn->id,
+            'quantity' => 10,
+        ]);
+    }
+
+        public function test_nurse_cannot_modify_inventory_for_another_campus(): void
+    {
+        $nurse = $this->createUserWithRole('nurse');
+        
+        // Create a different campus
+        $otherCampus = \App\Models\Campus::create([
+            'code' => 'TEST_CAMPUS', 
+            'name' => 'Test Campus', 
+            'address' => 'Test Address'
+        ]);
+        
+        $medicine = \App\Models\Medicine::factory()->create();
+
+        // Try to stock in for the other campus
+        $response = $this->asUser($nurse)->postJson('/api/v1/inventory/stock-in', [
+            'medicine_id' => $medicine->id,
+            'campus_id' => $otherCampus->id,
+            'quantity' => 100,
+            'date_received' => now()->format('Y-m-d'),
+            'expiration_date' => now()->addYear()->format('Y-m-d'),
+        ]);
+
+        $response->assertForbidden(); // 403
+
+        // Verify no stock was added to the other campus
+        $this->assertDatabaseMissing('medicine_stock_in', [
+            'medicine_id' => $medicine->id,
+            'campus_id' => $otherCampus->id,
+        ]);
+    }
 }

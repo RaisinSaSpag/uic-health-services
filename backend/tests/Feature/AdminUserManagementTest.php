@@ -209,4 +209,64 @@ class AdminUserManagementTest extends TestCase
     {
         return (int) Role::where('name', $roleName)->value('id');
     }
+        public function test_admin_cannot_delete_user_with_existing_records(): void
+    {
+        $admin = User::factory()->withRole('admin')->create();
+        $doctor = User::factory()->withRole('doctor')->create();
+        
+        // Create a campus and a patient
+        $campus = \App\Models\Campus::query()->first();
+        $student = User::factory()->withRole('student')->create();
+        
+        $patient = \App\Models\Patient::create([
+            'user_id' => $student->id,
+            'campus_id' => $campus->id,
+            'patient_number' => 'P-' . uniqid(),
+            'patient_type' => 'student',
+            'student_level' => 'college',
+            'sex' => 'female',
+            'birth_date' => '2000-01-01',
+            'age' => 24,
+            'address' => 'Test address',
+            'contact_number' => '09171234567',
+            'emergency_contact_name' => 'Emergency Contact',
+            'emergency_contact_number' => '09181234567',
+            'emergency_contact_relationship' => 'Parent',
+            'with_maintenance_medicine' => false,
+            'course_program' => 'BSIT',
+            'year_level' => '2',
+            'working_student' => false,
+        ]);
+
+        // Create a consultation and a prescription linked to this doctor
+        $consultation = \App\Models\Consultation::create([
+            'patient_id' => $patient->id,
+            'consultation_type' => 'walk_in',
+            'status' => 'nurse_assessment',
+            'chief_complaint' => 'Test',
+            'submitted_at' => now(),
+        ]);
+
+        $medicine = \App\Models\Medicine::create([
+            'name' => 'Test Med ' . uniqid(),
+            'category' => 'Test',
+        ]);
+
+        \App\Models\Prescription::create([
+            'consultation_id' => $consultation->id,
+            'medicine_id' => $medicine->id,
+            'quantity' => 5,
+            'prescribed_by' => $doctor->id,
+        ]);
+
+        // Attempt to delete the doctor
+        $response = $this->asUser($admin)->deleteJson("/api/v1/users/{$doctor->id}");
+
+        // Should return 409 Conflict, not 500
+        $response->assertStatus(409)
+            ->assertJsonPath('message', 'Cannot delete this user because they have existing records (prescriptions, inventory, etc.) in the system. Consider deactivating their account instead.');
+
+        // User should still exist
+        $this->assertDatabaseHas('users', ['id' => $doctor->id]);
+    }
 }

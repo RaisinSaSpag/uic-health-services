@@ -235,4 +235,75 @@ class PrescriptionApiTest extends TestCase
 
         $response->assertForbidden();
     }
+
+        public function test_doctor_cannot_create_prescription_with_invalid_consultation_or_medicine(): void
+    {
+        $doctor = $this->createUserWithRole('doctor');
+        $medicine = \App\Models\Medicine::factory()->create();
+        
+        // 1. Invalid consultation ID
+        $response = $this->asUser($doctor)->postJson('/api/v1/prescriptions', [
+            'consultation_id' => 999999,
+            'medicine_id' => $medicine->id,
+            'quantity' => 10,
+        ]);
+        $response->assertStatus(422)
+            ->assertJsonPath('message', 'Consultation not found.');
+
+        // 2. Invalid medicine ID
+        $student = $this->createUserWithRole('student');
+        $patient = \App\Models\Patient::factory()->create(['user_id' => $student->id]);
+        $consultation = \App\Models\Consultation::factory()->create(['patient_id' => $patient->id]);
+
+        $response = $this->asUser($doctor)->postJson('/api/v1/prescriptions', [
+            'consultation_id' => $consultation->id,
+            'medicine_id' => 999999,
+            'quantity' => 10,
+        ]);
+        $response->assertStatus(422)
+            ->assertJsonPath('message', 'Medicine not found.');
+    }
+
+    public function test_nurse_cannot_dispense_wrong_medicine_batch(): void
+    {
+        $doctor = $this->createUserWithRole('doctor');
+        $nurse = $this->createUserWithRole('nurse');
+        $campus = \App\Models\Campus::query()->first();
+
+        $medicineA = \App\Models\Medicine::factory()->create(['name' => 'Meds A']);
+        $medicineB = \App\Models\Medicine::factory()->create(['name' => 'Meds B']);
+
+        // Stock batch is for Medicine B
+        $stockIn = \App\Models\MedicineStockIn::factory()->create([
+            'medicine_id' => $medicineB->id,
+            'campus_id' => $campus->id,
+            'quantity' => 100,
+        ]);
+
+        // Prescription is for Medicine A
+        $student = $this->createUserWithRole('student');
+        $patient = \App\Models\Patient::factory()->create(['user_id' => $student->id]);
+        $consultation = \App\Models\Consultation::factory()->create(['patient_id' => $patient->id]);
+
+        $prescription = \App\Models\Prescription::factory()->create([
+            'consultation_id' => $consultation->id,
+            'medicine_id' => $medicineA->id,
+            'quantity' => 10,
+            'status' => 'pending',
+        ]);
+
+        // Try to dispense Medicine A prescription using Medicine B batch
+        $response = $this->asUser($nurse)->patchJson("/api/v1/prescriptions/{$prescription->id}/dispense", [
+            'stock_in_id' => $stockIn->id,
+        ]);
+
+        $response->assertStatus(409)
+            ->assertJsonPath('message', 'The selected stock batch does not match the prescribed medicine.');
+
+        // Verify nothing was dispensed
+        $this->assertDatabaseHas('prescriptions', [
+            'id' => $prescription->id,
+            'status' => 'pending',
+        ]);
+    }
 }

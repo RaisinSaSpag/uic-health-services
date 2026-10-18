@@ -2,6 +2,9 @@
 
 namespace App\Services\Clinic;
 
+use App\Models\Consultation;
+use App\Models\Medicine;
+use App\Models\MedicineStockIn;
 use App\Models\Prescription;
 use Illuminate\Database\Eloquent\Collection;
 use RuntimeException;
@@ -41,6 +44,17 @@ class PrescriptionService
             throw new RuntimeException('Quantity must be greater than zero.');
         }
 
+        // 1. Verify the consultation exists
+        $consultation = Consultation::find($consultationId);
+        if (!$consultation) {
+            throw new RuntimeException('Consultation not found.');
+        }
+
+        // 2. Verify the medicine exists
+        if (!Medicine::where('id', $medicineId)->exists()) {
+            throw new RuntimeException('Medicine not found.');
+        }
+
         $prescription = Prescription::create([
             'consultation_id' => $consultationId,
             'medicine_id' => $medicineId,
@@ -75,6 +89,16 @@ class PrescriptionService
 
         if ($prescription->status !== 'pending') {
             throw new RuntimeException('Only pending prescriptions can be dispensed.');
+        }
+
+        // 3. Verify the stock batch exists and matches the prescribed medicine
+        $stockIn = MedicineStockIn::find($stockInId);
+        if (!$stockIn) {
+            throw new RuntimeException('Stock-in record not found.');
+        }
+
+        if ((int) $stockIn->medicine_id !== (int) $prescription->medicine_id) {
+            throw new RuntimeException('The selected stock batch does not match the prescribed medicine.');
         }
 
         $this->inventoryService->dispense([

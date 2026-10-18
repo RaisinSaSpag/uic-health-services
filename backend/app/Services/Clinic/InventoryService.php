@@ -232,7 +232,7 @@ class InventoryService
      * Permanently delete an archived record AND the underlying stock batch
      * if all its units are archived (available + dispensed = 0).
      */
-    public function deleteArchived(int $archivedId, int $actorId): void
+        public function deleteArchived(int $archivedId, int $actorId): void
     {
         DB::transaction(function () use ($archivedId, $actorId) {
             $archived = MedicineArchived::lockForUpdate()->find($archivedId);
@@ -253,15 +253,18 @@ class InventoryService
 
             $archived->delete();
 
-            // Check if the parent batch has any remaining units
-            // If not, it's orphaned Ã¢â‚¬â€ remove it too
-            $stockIn = MedicineStockIn::find($stockInId);
+            $stockIn = MedicineStockIn::lockForUpdate()->find($stockInId);
             if ($stockIn) {
+                // Permanently reduce the batch quantity so the deleted pills don't reappear
+                $newQuantity = max(0, (int) $stockIn->quantity - $quantity);
+                $stockIn->update(['quantity' => $newQuantity]);
+
+                // Check if the parent batch now has no available units and no other archived records
                 $dispensed = (int) MedicineStockOut::where('stock_in_id', $stockInId)->sum('quantity_dispensed');
                 $remainingArchived = (int) MedicineArchived::where('stock_in_id', $stockInId)->sum('quantity');
-                $available = max(0, (int) $stockIn->quantity - $dispensed - $remainingArchived);
+                $available = max(0, $newQuantity - $dispensed - $remainingArchived);
 
-                // If nothing is left available and nothing archived, hard-delete the batch
+                // If nothing is left in circulation, we can safely delete the orphaned batch
                 if ($available === 0 && $remainingArchived === 0 && $dispensed === 0) {
                     $stockIn->delete();
                 }
