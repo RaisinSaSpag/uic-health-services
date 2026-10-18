@@ -316,4 +316,74 @@ class Phase4WorkflowTest extends TestCase
             'patient_type' => $patientType,
         ]);
     }
+    public function test_nurse_can_create_consultation(): void
+    {
+        $nurse = $this->createUserWithRole('nurse');
+        $student = $this->createUserWithRole('student');
+        $campus = \App\Models\Campus::query()->first();
+
+        $patient = \App\Models\Patient::create([
+            'user_id' => $student->id,
+            'campus_id' => $campus->id,
+            'patient_number' => 'P-' . uniqid(),
+            'patient_type' => 'student',
+            'student_level' => 'college',
+            'sex' => 'female',
+            'birth_date' => '2000-01-01',
+            'age' => 24,
+            'address' => 'Test address',
+            'contact_number' => '09171234567',
+            'emergency_contact_name' => 'Emergency Contact',
+            'emergency_contact_number' => '09181234567',
+            'emergency_contact_relationship' => 'Parent',
+            'with_maintenance_medicine' => false,
+            'course_program' => 'BSIT',
+            'year_level' => '2',
+            'working_student' => false,
+        ]);
+
+        $response = $this->asUser($nurse)->postJson('/api/v1/consultations', [
+            'patient_id' => $patient->id,
+            'consultation_type' => 'walk_in',
+            'consultation_date' => now()->format('Y-m-d'),
+            'consultation_time' => now()->format('H:i'),
+            'chief_complaint' => 'Headache for 2 days',
+            'diagnosis' => 'Tension headache',
+        ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('status', 'nurse_assessment')
+            ->assertJsonPath('nurse_id', $nurse->id);
+
+        $this->assertDatabaseHas('consultations', [
+            'patient_id' => $patient->id,
+            'nurse_id' => $nurse->id,
+            'status' => 'nurse_assessment',
+        ]);
+    }
+        public function test_coordinator_has_nurse_equivalent_access(): void
+    {
+        $coordinator = $this->createUserWithRole('coordinator');
+        $campus = \App\Models\Campus::query()->first();
+
+        // Coordinator should be able to list patients (nurse-level permission)
+        $this->asUser($coordinator)
+            ->getJson('/api/v1/patients?per_page=5')
+            ->assertOk();
+
+        // Coordinator should be able to view inventory
+        $this->asUser($coordinator)
+            ->getJson('/api/v1/inventory/available?campus_id=' . $campus->id)
+            ->assertOk();
+
+        // Coordinator should be able to access chat
+        $this->asUser($coordinator)
+            ->getJson('/api/v1/messages/contacts')
+            ->assertOk();
+
+        // Coordinator should NOT be able to create users (admin only)
+        $this->asUser($coordinator)
+            ->postJson('/api/v1/users', [])
+            ->assertForbidden();
+    }
 }

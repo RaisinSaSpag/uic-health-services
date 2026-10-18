@@ -52,7 +52,7 @@ function App() {
           <Route
             path="nurse"
             element={
-              <RoleRoute roles={['nurse', 'admin']}>
+              <RoleRoute roles={['nurse', 'coordinator', 'admin']}>
                 <NurseQueuePage />
               </RoleRoute>
             }
@@ -61,7 +61,7 @@ function App() {
           <Route
             path="nurse/records/:patientType"
             element={
-              <RoleRoute roles={['nurse', 'admin']}>
+              <RoleRoute roles={['nurse', 'coordinator', 'admin']}>
                 <NurseRecordsPage />
               </RoleRoute>
             }
@@ -70,7 +70,7 @@ function App() {
           <Route
             path="nurse/print-prescription"
             element={
-              <RoleRoute roles={['nurse', 'admin']}>
+              <RoleRoute roles={['nurse', 'coordinator', 'admin']}>
                 <NursePrintPrescriptionPage />
               </RoleRoute>
             }
@@ -79,7 +79,7 @@ function App() {
           <Route
             path="nurse/reports"
             element={
-              <RoleRoute roles={['nurse', 'admin']}>
+              <RoleRoute roles={['nurse', 'coordinator', 'admin']}>
                 <NurseReportsPage />
               </RoleRoute>
             }
@@ -88,7 +88,7 @@ function App() {
           <Route
             path="nurse/about"
             element={
-              <RoleRoute roles={['nurse', 'admin']}>
+              <RoleRoute roles={['nurse', 'coordinator', 'admin']}>
                 <NurseAboutPage />
               </RoleRoute>
             }
@@ -97,7 +97,7 @@ function App() {
           <Route
             path="nurse/patients/:patientId"
             element={
-              <RoleRoute roles={['nurse', 'admin']}>
+              <RoleRoute roles={['nurse', 'coordinator', 'admin']}>
                 <NursePatientDetailPage />
               </RoleRoute>
             }
@@ -106,7 +106,7 @@ function App() {
           <Route
             path="nurse/patients/:patientId/new-consultation"
             element={
-              <RoleRoute roles={['nurse', 'admin']}>
+              <RoleRoute roles={['nurse', 'coordinator', 'admin']}>
                 <NurseConsultationTypePage />
               </RoleRoute>
             }
@@ -115,7 +115,7 @@ function App() {
           <Route
             path="nurse/patients/:patientId/new-consultation/:consultationType"
             element={
-              <RoleRoute roles={['nurse', 'admin']}>
+              <RoleRoute roles={['nurse', 'coordinator', 'admin']}>
                 <NurseConsultationFormPage />
               </RoleRoute>
             }
@@ -125,7 +125,7 @@ function App() {
           <Route
             path="nurse/inventory"
             element={
-              <RoleRoute roles={['nurse', 'admin']}>
+              <RoleRoute roles={['nurse', 'coordinator', 'admin']}>
                 <NurseInventoryDashboardPage />
               </RoleRoute>
             }
@@ -134,7 +134,7 @@ function App() {
           <Route
             path="nurse/inventory/stocks"
             element={
-              <RoleRoute roles={['nurse', 'admin']}>
+              <RoleRoute roles={['nurse', 'coordinator', 'admin']}>
                 <NurseInventoryStocksPage />
               </RoleRoute>
             }
@@ -143,7 +143,7 @@ function App() {
           <Route
             path="nurse/inventory/requests"
             element={
-              <RoleRoute roles={['nurse', 'admin']}>
+              <RoleRoute roles={['nurse', 'coordinator', 'admin']}>
                 <NurseInventoryRequestsPage />
               </RoleRoute>
             }
@@ -151,7 +151,7 @@ function App() {
           <Route
             path="nurse/inventory/history"
            element={
-              <RoleRoute roles={['nurse', 'admin']}>
+              <RoleRoute roles={['nurse', 'coordinator', 'admin']}>
                 <NurseInventoryHistoryPage />
             </RoleRoute>
             }
@@ -159,7 +159,7 @@ function App() {
           <Route
             path="nurse/inventory/about"
              element={
-             <RoleRoute roles={['nurse', 'admin']}>
+             <RoleRoute roles={['nurse', 'coordinator', 'admin']}>
                <NurseInventoryAboutPage />
              </RoleRoute>
              }
@@ -168,7 +168,7 @@ function App() {
           <Route
             path="nurse/inventory/reports"
               element={
-              <RoleRoute roles={['nurse', 'admin']}>
+              <RoleRoute roles={['nurse', 'coordinator', 'admin']}>
                 <NurseInventoryReportsPage />
               </RoleRoute>
              }
@@ -270,7 +270,7 @@ function App() {
           <Route
             path="nurse/referrals"
             element={
-              <RoleRoute roles={['nurse', 'admin']}>
+              <RoleRoute roles={['nurse', 'coordinator', 'admin']}>
                 <NurseReferralsPage />
               </RoleRoute>
             }
@@ -279,7 +279,7 @@ function App() {
           <Route
             path="nurse/referrals/:referralId"
             element={
-              <RoleRoute roles={['nurse', 'admin']}>
+              <RoleRoute roles={['nurse', 'coordinator', 'admin']}>
                 <NurseReferralsPage />
               </RoleRoute>
             }
@@ -296,7 +296,7 @@ function App() {
                     <Route
             path="nurse/chat"
             element={
-              <RoleRoute roles={['nurse', 'admin']}>
+              <RoleRoute roles={['nurse', 'coordinator', 'admin']}>
                 <ChatPage />
               </RoleRoute>
             }
@@ -314,7 +314,7 @@ function App() {
                     <Route
             path="nurse/notifications"
             element={
-              <RoleRoute roles={['nurse', 'admin']}>
+              <RoleRoute roles={['nurse', 'coordinator', 'admin']}>
                 <NotificationPage />
               </RoleRoute>
             }
