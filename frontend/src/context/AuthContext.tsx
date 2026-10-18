@@ -12,6 +12,7 @@ import { normalizeRoleName } from '../lib/format';
 import { clearSession, getStoredToken, getStoredUser, storeSession } from '../lib/session';
 import type { AuthUser, RoleName } from '../types/hsms';
 
+
 interface AuthContextValue {
   user: AuthUser | null;
   token: string | null;
@@ -36,7 +37,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
 
-  const signOut = useCallback(() => {
+  const signOut = useCallback(async () => {
+    try {
+      // Tell the backend we are logging out (for audit logs / token invalidation)
+      await api.post('/auth/logout');
+    } catch (err) {
+      // Ignore errors — we are clearing the client state regardless
+    }
+    
+    // Clear the client session
     clearSession();
     setToken(null);
     setUser(null);

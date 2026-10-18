@@ -180,6 +180,16 @@ class BranchRequestApiTest extends TestCase
         $nurse = $this->createUserWithRole('nurse');
         $branchRequest = BranchRequest::factory()->create(['status' => 'approved']);
 
+        // Seed enough stock at the supplying campus to cover the request
+        \App\Models\MedicineStockIn::create([
+            'medicine_id' => $branchRequest->medicine_id,
+            'campus_id' => $branchRequest->to_campus_id,
+            'quantity' => 100,
+            'date_received' => now()->subDays(5),
+            'expiration_date' => now()->addYear(),
+            'received_by' => $nurse->id,
+        ]);
+
         $response = $this->asUser($nurse)->patchJson(
             "/api/v1/branch-requests/{$branchRequest->id}/complete"
         );

@@ -25,7 +25,10 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/google/callback', [AuthController::class, 'googleCallback'])->middleware('throttle:20,1');
         Route::post('/staff/login', [AuthController::class, 'staffLogin'])->middleware('throttle:20,1');
 
-        Route::middleware(['jwt', 'throttle:60,1'])->get('/me', [AuthController::class, 'me']);
+        Route::middleware(['jwt', 'throttle:60,1'])->group(function (): void {
+            Route::get('/me', [AuthController::class, 'me']);
+            Route::post('/logout', [AuthController::class, 'logout']);
+        });
     });
 
     Route::middleware(['jwt', 'throttle:200,1'])->group(function (): void {
@@ -88,6 +91,9 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/users', [UserController::class, 'store'])
                 ->middleware('throttle:10,1');
             Route::patch('/users/{user}', [UserController::class, 'update'])
+                ->whereNumber('user')
+                ->middleware('throttle:10,1');
+            Route::patch('/users/{user}/password', [UserController::class, 'resetPassword'])
                 ->whereNumber('user')
                 ->middleware('throttle:10,1');
             Route::delete('/users/{user}', [UserController::class, 'destroy'])

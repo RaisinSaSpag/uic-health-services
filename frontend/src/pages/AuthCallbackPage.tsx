@@ -40,6 +40,9 @@ export function AuthCallbackPage() {
             headers: { Authorization: `Bearer ${token}` },
           });
 
+          // Clear the token from the URL so it doesn't get stored in browser history
+          window.history.replaceState({}, document.title, window.location.pathname);
+
           signIn(token, {
             ...response.data,
             role: normalizeRoleName(response.data.role),
@@ -67,6 +70,9 @@ export function AuthCallbackPage() {
         const response = await api.get<AuthCallbackResponse>('/auth/google/callback', {
           params: { code },
         });
+
+        // Clear the code from the URL so it doesn't get stored in browser history
+        window.history.replaceState({}, document.title, window.location.pathname);
 
         signIn(response.data.access_token, {
           ...response.data.user,

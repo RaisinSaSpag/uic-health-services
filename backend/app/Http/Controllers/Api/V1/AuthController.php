@@ -151,4 +151,14 @@ class AuthController extends Controller
             'department' => $user?->department?->name,
         ]);
     }
+
+    /**
+     * Log the user out (invalidate the token on the client side).
+     */
+    public function logout(Request $request): JsonResponse
+    {
+        // Since JWTs are stateless, actual invalidation happens on the client.
+        // We just return a successful response so the client knows to clear the token.
+        return response()->json(['message' => 'Successfully logged out.']);
+    }
 }

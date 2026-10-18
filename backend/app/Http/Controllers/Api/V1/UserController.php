@@ -11,6 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class UserController extends Controller
 {
@@ -124,7 +125,7 @@ class UserController extends Controller
         return response()->json($user->load(['role', 'campus', 'department']));
     }
 
-        public function update(Request $request, User $user): JsonResponse
+    public function update(Request $request, User $user): JsonResponse
     {
         $validated = $request->validate([
             'first_name' => ['sometimes', 'required', 'string', 'max:80'],
@@ -156,6 +157,13 @@ class UserController extends Controller
                 return response()->json([
                     'message' => 'Only UIC email addresses (@uic.edu.ph) are allowed.',
                 ], 403);
+            }
+
+            // RISK-11: Prevent case-insensitive duplicate 500 errors on update
+            if ($newEmail !== $user->email && User::where('email', $newEmail)->exists()) {
+                throw ValidationException::withMessages([
+                    'email' => ['The email has already been taken.'],
+                ]);
             }
 
             if ($newEmail !== $user->email) {
@@ -242,6 +250,13 @@ class UserController extends Controller
             ], 403);
         }
 
+        // RISK-11: Prevent case-insensitive duplicate 500 errors
+        if (User::where('email', $normalizedEmail)->exists()) {
+            throw ValidationException::withMessages([
+                'email' => ['The email has already been taken.'],
+            ]);
+        }
+
         $roleName = Str::lower((string) $validated['role_name']);
         $role = Role::whereRaw('LOWER(name) = ?', [$roleName])->first();
 
@@ -252,7 +267,7 @@ class UserController extends Controller
         $user = User::create([
             'first_name' => $validated['first_name'],
             'last_name'  => $validated['last_name'],
-            'email'      => Str::lower($validated['email']),
+            'email'      => $normalizedEmail,
             'password'   => Hash::make($validated['password']),
             'role_id'    => $role->id,
             'campus_id'  => $validated['campus_id'],
@@ -273,6 +288,28 @@ class UserController extends Controller
         );
 
         return response()->json($user->load(['role', 'campus', 'department']), 201);
+    }
+
+        public function resetPassword(Request $request, User $user): JsonResponse
+    {
+        $validated = $request->validate([
+            'password' => ['required', 'string', 'min:6', 'max:72'],
+        ]);
+
+        $user->update([
+            'password' => Hash::make($validated['password']),
+        ]);
+
+        $this->auditLogService->log(
+            actor: $request->user(),
+            action: 'user.password_reset',
+            entityType: 'user',
+            entityId: $user->id,
+            oldValues: null,
+            newValues: ['message' => 'Password reset by admin'],
+        );
+
+        return response()->json(['message' => 'Password reset successfully.']);
     }
 
     public function destroy(Request $request, User $user): JsonResponse
@@ -309,13 +346,12 @@ class UserController extends Controller
         try {
             $user->delete();
         } catch (\Illuminate\Database\QueryException $e) {
-            // Check if it's a foreign key constraint violation (SQLSTATE 23000)
             if ($e->getCode() === '23000' || str_contains($e->getMessage(), 'FOREIGN KEY constraint failed')) {
                 return response()->json([
                     'message' => 'Cannot delete this user because they have existing records (prescriptions, inventory, etc.) in the system. Consider deactivating their account instead.',
                 ], 409);
             }
-            throw $e; // Re-throw if it's a different database error
+            throw $e;
         }
 
         $this->auditLogService->log(

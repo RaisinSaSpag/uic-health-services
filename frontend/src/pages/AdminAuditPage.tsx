@@ -21,7 +21,6 @@ function roleNameLabel(value: string): string {
       .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
       .join(' ');
   }
-
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
@@ -29,11 +28,9 @@ function userRoleName(user: UserRecord): string {
   if (typeof user.role === 'string') {
     return user.role;
   }
-
   if (user.role && typeof user.role === 'object' && typeof user.role.name === 'string') {
     return user.role.name;
   }
-
   return 'unknown';
 }
 
@@ -52,6 +49,9 @@ export function AdminAuditPage() {
   const [addSubmitting, setAddSubmitting] = useState(false);
   const [deletingUserId, setDeletingUserId] = useState<number | null>(null);
   const [isEditOpen, setEditOpen] = useState(false);
+  const [resetPasswordUserId, setResetPasswordUserId] = useState<number | null>(null);
+  const [resetPasswordValue, setResetPasswordValue] = useState('');
+  const [resettingPassword, setResettingPassword] = useState(false);
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [editForm, setEditForm] = useState({
     first_name: '',
@@ -79,7 +79,6 @@ export function AdminAuditPage() {
 
   const loadAuditLogs = useCallback(async () => {
     setLoading(true);
-
     try {
       const response = await api.get<PaginatedResponse<AuditLog>>('/audit-logs', {
         params: {
@@ -91,7 +90,6 @@ export function AdminAuditPage() {
           ...(filters.date_to ? { date_to: filters.date_to } : {}),
         },
       });
-
       setLogs(response.data.data);
       setLastPage(response.data.last_page);
     } catch (err) {
@@ -108,17 +106,13 @@ export function AdminAuditPage() {
   const applyFilters = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
     setPage(1);
-
     if (page === 1) {
       void loadAuditLogs();
     }
   };
 
   const formatPayload = (value: Record<string, unknown> | null | undefined): string => {
-    if (!value) {
-      return 'N/A';
-    }
-
+    if (!value) return 'N/A';
     return JSON.stringify(value, null, 2);
   };
 
@@ -127,27 +121,18 @@ export function AdminAuditPage() {
 
   const searchUsers = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
-
     const trimmedSearch = userSearch.trim();
-
     if (trimmedSearch === '') {
       setUserResults([]);
       setSelectedUserId('');
       return;
     }
-
     setSearchingUsers(true);
-
     try {
       const response = await api.get<PaginatedResponse<UserRecord>>('/users', {
-        params: {
-          search: trimmedSearch,
-          per_page: 20,
-        },
+        params: { search: trimmedSearch, per_page: 20 },
       });
-
       const users = response.data.data;
-
       setUserResults(users);
       setSelectedUserId(users.length > 0 ? String(users[0].id) : '');
       setSelectedRoleName('');
@@ -163,36 +148,26 @@ export function AdminAuditPage() {
 
   const assignRole = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
-
     if (selectedUserId === '' || selectedRoleName === '') {
       void notifyInfo('Select both a user and a role before assigning.', 'Missing Information');
       return;
     }
-
     const confirmed = await confirmAction({
       title: 'Assign this role?',
       text: `User #${selectedUserId} will be assigned role ${roleNameLabel(selectedRoleName)}.`,
       confirmButtonText: 'Yes, assign role',
     });
-
-    if (!confirmed) {
-      return;
-    }
-
+    if (!confirmed) return;
     setAssigningRole(true);
-
     try {
       const response = await api.patch<UserRecord>(`/users/${selectedUserId}/role`, {
         role_name: selectedRoleName,
       });
-
       const updatedUser = response.data;
-
       setUserResults((current) =>
         current.map((candidate) => (candidate.id === updatedUser.id ? updatedUser : candidate)),
       );
       void notifySuccess('Role updated successfully.', 'Role Assigned');
-
       setPage(1);
       void loadAuditLogs();
     } catch (err) {
@@ -213,7 +188,6 @@ export function AdminAuditPage() {
 
   const openEditModal = (): void => {
     if (!selectedUser) return;
-
     setEditForm({
       first_name: selectedUser.first_name ?? '',
       last_name: selectedUser.last_name ?? '',
@@ -231,7 +205,6 @@ export function AdminAuditPage() {
   const submitEditUser = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     if (!selectedUser) return;
-
     setEditSubmitting(true);
     try {
       const response = await api.patch<UserRecord>(`/users/${selectedUser.id}`, {
@@ -242,12 +215,10 @@ export function AdminAuditPage() {
         campus_id: Number(editForm.campus_id),
         is_active: editForm.is_active,
       });
-
       const updated = response.data;
       setUserResults((current) =>
         current.map((candidate) => (candidate.id === updated.id ? updated : candidate)),
       );
-
       void notifySuccess('User updated successfully.', 'Updated');
       setEditOpen(false);
     } catch (err) {
@@ -275,7 +246,6 @@ export function AdminAuditPage() {
   const submitAddUser = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     setAddSubmitting(true);
-
     try {
       await api.post('/users', {
         first_name: addForm.first_name.trim(),
@@ -285,10 +255,8 @@ export function AdminAuditPage() {
         role_name: addForm.role_name,
         campus_id: Number(addForm.campus_id),
       });
-
       void notifySuccess('User created successfully.', 'User Added');
       setAddOpen(false);
-
       if (userSearch.trim() !== '') {
         const response = await api.get<PaginatedResponse<UserRecord>>('/users', {
           params: { search: userSearch.trim(), per_page: 20 },
@@ -303,22 +271,16 @@ export function AdminAuditPage() {
   };
 
   const deleteSelectedUser = async (): Promise<void> => {
-    if (!selectedUser) {
-      return;
-    }
+    if (!selectedUser) return;
 
     const confirmed = await confirmAction({
       title: 'Delete this user?',
       text: `${userDisplayName(selectedUser)} (${selectedUser.email}) will be permanently deleted.`,
       confirmButtonText: 'Yes, delete user',
     });
-
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
 
     setDeletingUserId(selectedUser.id);
-
     try {
       await api.delete(`/users/${selectedUser.id}`);
       void notifySuccess('User deleted.', 'Deleted');
@@ -329,6 +291,26 @@ export function AdminAuditPage() {
       void notifyError(getErrorMessage(err, 'Unable to delete user.'), 'Delete Failed');
     } finally {
       setDeletingUserId(null);
+    }
+  };
+
+  // ✅ Moved OUT of deleteSelectedUser — top-level component handler
+  const handleResetPassword = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
+    event.preventDefault();
+    if (!resetPasswordUserId) return;
+
+    setResettingPassword(true);
+    try {
+      await api.patch(`/users/${resetPasswordUserId}/password`, {
+        password: resetPasswordValue,
+      });
+      void notifySuccess('Password reset successfully.', 'Password Reset');
+      setResetPasswordUserId(null);
+      setResetPasswordValue('');
+    } catch (err) {
+      void notifyError(getErrorMessage(err, 'Unable to reset password.'), 'Reset Failed');
+    } finally {
+      setResettingPassword(false);
     }
   };
 
@@ -352,12 +334,7 @@ export function AdminAuditPage() {
             <button className="button" disabled={searchingUsers} type="submit">
               {searchingUsers ? 'Searching users...' : 'Search Users'}
             </button>
-            <button
-              className="button"
-              type="button"
-              onClick={openAddModal}
-              disabled={addSubmitting}
-            >
+            <button className="button" type="button" onClick={openAddModal} disabled={addSubmitting}>
               + Add User
             </button>
           </div>
@@ -369,9 +346,7 @@ export function AdminAuditPage() {
               <span>Matched Users</span>
               <select
                 value={selectedUserId}
-                onChange={(event) => {
-                  setSelectedUserId(event.target.value);
-                }}
+                onChange={(event) => setSelectedUserId(event.target.value)}
                 required
               >
                 <option value="">Select a user</option>
@@ -404,7 +379,7 @@ export function AdminAuditPage() {
               </select>
             </label>
 
-         <div className="field full-width" style={{ display: 'flex', gap: '0.5rem' }}>
+            <div className="field full-width" style={{ display: 'flex', gap: '0.5rem' }}>
               <button
                 className="button"
                 disabled={assigningRole || selectedUserId === '' || selectedRoleName === ''}
@@ -447,10 +422,7 @@ export function AdminAuditPage() {
             <input
               value={filters.action}
               onChange={(event) =>
-                setFilters((current) => ({
-                  ...current,
-                  action: event.target.value,
-                }))
+                setFilters((current) => ({ ...current, action: event.target.value }))
               }
               placeholder="consultation.completed"
             />
@@ -461,10 +433,7 @@ export function AdminAuditPage() {
             <input
               value={filters.entity_type}
               onChange={(event) =>
-                setFilters((current) => ({
-                  ...current,
-                  entity_type: event.target.value,
-                }))
+                setFilters((current) => ({ ...current, entity_type: event.target.value }))
               }
               placeholder="consultation"
             />
@@ -476,10 +445,7 @@ export function AdminAuditPage() {
               type="date"
               value={filters.date_from}
               onChange={(event) =>
-                setFilters((current) => ({
-                  ...current,
-                  date_from: event.target.value,
-                }))
+                setFilters((current) => ({ ...current, date_from: event.target.value }))
               }
             />
           </label>
@@ -490,10 +456,7 @@ export function AdminAuditPage() {
               type="date"
               value={filters.date_to}
               onChange={(event) =>
-                setFilters((current) => ({
-                  ...current,
-                  date_to: event.target.value,
-                }))
+                setFilters((current) => ({ ...current, date_to: event.target.value }))
               }
             />
           </label>
@@ -558,11 +521,9 @@ export function AdminAuditPage() {
               >
                 Previous
               </button>
-
               <span className="muted small">
                 Page {page} of {lastPage}
               </span>
-
               <button
                 className="button ghost"
                 disabled={page >= lastPage}
@@ -697,7 +658,7 @@ export function AdminAuditPage() {
           </section>
         </div>
       )}
-      
+
       {isEditOpen && selectedUser && (
         <div
           style={{
@@ -793,7 +754,19 @@ export function AdminAuditPage() {
                 <span>Active account</span>
               </label>
 
-              <div className="field full-width" style={{ display: 'flex', gap: '0.5rem' }}>
+              <div className="field full-width" style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <button
+                  className="button"
+                  type="button"
+                  onClick={() => {
+                    setEditOpen(false);
+                    setResetPasswordUserId(selectedUser.id);
+                    setResetPasswordValue('');
+                  }}
+                  disabled={editSubmitting}
+                >
+                  Reset Password
+                </button>
                 <button
                   className="button"
                   type="button"
@@ -804,6 +777,60 @@ export function AdminAuditPage() {
                 </button>
                 <button className="button" type="submit" disabled={editSubmitting}>
                   {editSubmitting ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {/* ✅ Reset Password modal — rendered inside the component's JSX tree */}
+      {resetPasswordUserId !== null && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.45)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 100,
+          }}
+          onClick={() => !resettingPassword && setResetPasswordUserId(null)}
+        >
+          <section
+            className="panel"
+            style={{ maxWidth: 400, width: '100%', padding: '1.5rem' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ marginTop: 0 }}>Reset User Password</h3>
+            <form onSubmit={handleResetPassword}>
+              <label className="field full-width" style={{ marginBottom: '1rem' }}>
+                <span>New Password</span>
+                <input
+                  type="text"
+                  required
+                  minLength={6}
+                  value={resetPasswordValue}
+                  onChange={(e) => setResetPasswordValue(e.target.value)}
+                  placeholder="Enter new password (min 6 chars)"
+                />
+              </label>
+              <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  className="button"
+                  onClick={() => setResetPasswordUserId(null)}
+                  disabled={resettingPassword}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="button primary"
+                  disabled={resettingPassword || resetPasswordValue.length < 6}
+                >
+                  {resettingPassword ? 'Resetting...' : 'Reset Password'}
                 </button>
               </div>
             </form>

@@ -9,6 +9,8 @@ import {
   Stethoscope,
   MessageSquare,
   type LucideIcon,
+  Plus,
+  Trash2,
 } from 'lucide-react';
 import { StatusBadge } from '../components/StatusBadge';
 import { useAuth } from '../context/AuthContext';
@@ -16,7 +18,7 @@ import { api } from '../lib/api';
 import { confirmAction, notifyError, notifySuccess } from '../lib/alerts';
 import { formatDateTime, userDisplayName } from '../lib/format';
 import { getErrorMessage } from '../lib/http';
-import type { PaginatedResponse, Referral } from '../types/hsms';
+import type { PaginatedResponse, Referral, Medicine } from '../types/hsms';
 
 type DoctorSection = 'dashboard' | 'inventory' | 'referrals' | 'about' | 'chat' | 'notifications';
 
@@ -26,22 +28,22 @@ interface DoctorMenuItem {
   icon: LucideIcon;
 }
 
+interface PrescriptionRow {
+  id: string;
+  medicine_id: number | '';
+  quantity: number | '';
+  dosage_instructions: string;
+}
+
 const doctorMenuItems: DoctorMenuItem[] = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { key: 'inventory', label: 'Inventory', icon: Package },
   { key: 'referrals', label: 'Referrals', icon: Stethoscope },
   { key: 'about', label: 'About', icon: Info },
-  {
-    key: 'chat',
-    label: 'Messages',
-    icon: MessageSquare,
-  },
-  {
-    key: 'notifications',
-    label: 'Notifications',
-    icon: Bell,
-  },
+  { key: 'chat', label: 'Messages', icon: MessageSquare },
+  { key: 'notifications', label: 'Notifications', icon: Bell },
 ];
+
 const doctorInventorySubItems: Array<{ key: string; label: string; path: string }> = [
   { key: 'inventory_dashboard', label: 'Dashboard', path: '/doctor/inventory' },
   { key: 'inventory_stocks', label: 'Stocks', path: '/doctor/inventory/stocks' },
@@ -62,7 +64,6 @@ function normalizeText(value: string | null | undefined): string {
   if (!value || value.trim() === '') {
     return 'N/A';
   }
-
   return value.replace(/_/g, ' ');
 }
 
@@ -70,17 +71,14 @@ function normalizeVital(value: string | number | null | undefined, suffix = ''):
   if (value === null || value === undefined || value === '') {
     return 'N/A';
   }
-
   return suffix ? `${value} ${suffix}` : String(value);
 }
 
 function parseReferralId(value: string | undefined): number | null {
   const parsed = Number(value);
-
   if (!Number.isInteger(parsed) || parsed <= 0) {
     return null;
   }
-
   return parsed;
 }
 
@@ -99,8 +97,11 @@ export function DoctorReferralsPage() {
   const [detailReferral, setDetailReferral] = useState<Referral | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [doctorRemarks, setDoctorRemarks] = useState('');
-  const [prescription, setPrescription] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // RISK-06: Structured Prescription State
+  const [medicines, setMedicines] = useState<Medicine[]>([]);
+  const [prescriptions, setPrescriptions] = useState<PrescriptionRow[]>([]);
 
   const routeReferralId = useMemo(() => parseReferralId(rawReferralId), [rawReferralId]);
   const isDetailMode = routeReferralId !== null;
@@ -109,20 +110,12 @@ export function DoctorReferralsPage() {
   const campusName = useMemo(() => user?.campus ?? 'Campus not assigned', [user]);
 
   const loadReferrals = useCallback(async () => {
-    if (isDetailMode) {
-      return;
-    }
-
+    if (isDetailMode) return;
     setLoading(true);
-
     try {
       const response = await api.get<PaginatedResponse<Referral>>('/referrals', {
-        params: {
-          per_page: 100,
-          ...(statusFilter ? { status: statusFilter } : {}),
-        },
+        params: { per_page: 100, ...(statusFilter ? { status: statusFilter } : {}) },
       });
-
       setReferrals(response.data.data);
     } catch (err) {
       void notifyError(getErrorMessage(err, 'Unable to load doctor referrals.'), 'Load Failed');
@@ -131,50 +124,56 @@ export function DoctorReferralsPage() {
     }
   }, [isDetailMode, statusFilter]);
 
+  const loadMedicines = useCallback(async () => {
+    try {
+      const response = await api.get<PaginatedResponse<Medicine> | Medicine[]>('/medicines', { params: { per_page: 100 }});
+      // Handle both paginated and raw array responses just in case
+      const data = Array.isArray(response.data) ? response.data : response.data.data;
+      setMedicines(data);
+    } catch {
+      // non-fatal; doctor can still complete referral without structured medicine
+    }
+  }, []);
+
   const loadReferralDetail = useCallback(async () => {
     if (!routeReferralId) {
       setDetailReferral(null);
       return;
     }
-
     setLoadingDetail(true);
-
     try {
       const response = await api.get<Referral>(`/referrals/${routeReferralId}`);
       setDetailReferral(response.data);
       setDoctorRemarks(response.data.doctor_remarks ?? '');
-      setPrescription(response.data.prescription ?? '');
+      // Load medicines for the dropdown
+      if (medicines.length === 0) {
+        void loadMedicines();
+      }
     } catch (err) {
       void notifyError(getErrorMessage(err, 'Unable to load selected referral.'), 'Load Failed');
       navigate('/doctor/referrals');
     } finally {
       setLoadingDetail(false);
     }
-  }, [navigate, routeReferralId]);
+  }, [navigate, routeReferralId, medicines.length, loadMedicines]);
 
   useEffect(() => {
     if (isDetailMode) {
       void loadReferralDetail();
       return;
     }
-
     void loadReferrals();
   }, [isDetailMode, loadReferralDetail, loadReferrals]);
 
   const filteredReferrals = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
-
-    if (normalizedSearch === '') {
-      return referrals;
-    }
-
+    if (normalizedSearch === '') return referrals;
     return referrals.filter((referral) => {
       const values = [
         userDisplayName(referral.consultation?.patient?.user).toLowerCase(),
         (referral.referral_reason ?? '').toLowerCase(),
         normalizeText(referral.status).toLowerCase(),
       ];
-
       return values.some((value) => value.includes(normalizedSearch));
     });
   }, [referrals, search]);
@@ -185,79 +184,108 @@ export function DoctorReferralsPage() {
 
   const onMenuClick = (section: DoctorSection): void => {
     setActiveSection(section);
-
-    if (section === 'dashboard') {
-      navigate('/doctor');
-      return;
-    }
-
-    if (section === 'chat') {
-      navigate('/doctor/chat');
-      return;
-    }
-
-    if (section === 'notifications') {
-      navigate('/doctor/notifications');
-      return;
-    }
-
-    if (section === 'inventory') {
-      setIsInventoryOpen((current) => !current);
-      return;
-    }
-
-    if (section === 'referrals') {
-      navigate('/doctor/referrals');
-      return;
-    }
-
-    if (section === 'about') {
-      navigate('/doctor/about');
-    }
+    if (section === 'dashboard') { navigate('/doctor'); return; }
+    if (section === 'chat') { navigate('/doctor/chat'); return; }
+    if (section === 'notifications') { navigate('/doctor/notifications'); return; }
+    if (section === 'inventory') { setIsInventoryOpen((current) => !current); return; }
+    if (section === 'referrals') { navigate('/doctor/referrals'); return; }
+    if (section === 'about') { navigate('/doctor/about'); }
   };
 
   const onInventorySubItemClick = (path: string): void => {
     navigate(path);
   };
 
+  // --- Prescription Row Handlers ---
+  const addPrescriptionRow = () => {
+    setPrescriptions((current) => [
+      ...current,
+      { id: Date.now().toString(), medicine_id: '', quantity: 1, dosage_instructions: '' },
+    ]);
+  };
+
+  const updatePrescriptionRow = (id: string, field: keyof PrescriptionRow, value: string | number) => {
+    setPrescriptions((current) =>
+      current.map((row) => (row.id === id ? { ...row, [field]: value } : row))
+    );
+  };
+
+  const removePrescriptionRow = (id: string) => {
+    setPrescriptions((current) => current.filter((row) => row.id !== id));
+  };
+
   const updateReferral = async (action: 'in_progress' | 'complete'): Promise<void> => {
-    if (!detailReferral) {
-      return;
-    }
+    if (!detailReferral) return;
 
     if (action === 'complete') {
-      if (doctorRemarks.trim() === '' || prescription.trim() === '') {
-        void notifyError('Doctor remarks and prescription are required to complete this referral.', 'Missing Details');
+      if (doctorRemarks.trim() === '') {
+        void notifyError('Doctor remarks are required to complete this referral.', 'Missing Details');
         return;
       }
-    }
+      
+      // Validate prescriptions if any are added
+      const validPrescriptions = prescriptions.filter(p => p.medicine_id !== '' && p.quantity !== '');
+      if (prescriptions.length > 0 && validPrescriptions.length !== prescriptions.length) {
+        void notifyError('Please fill in all medicine and quantity fields for prescriptions.', 'Incomplete Prescriptions');
+        return;
+      }
 
-    const confirmed = await confirmAction({
-      title: action === 'complete' ? 'Complete this referral?' : 'Mark referral in progress?',
-      text: `Referral #${detailReferral.id} will be updated to ${action}.`,
-      confirmButtonText: action === 'complete' ? 'Complete Referral' : 'Mark In Progress',
-      cancelButtonText: 'Cancel',
-    });
-
-    if (!confirmed) {
-      return;
-    }
-
-    setSaving(true);
-
-    try {
-      await api.patch(`/referrals/${detailReferral.id}`, {
-        action,
-        doctor_remarks: action === 'complete' ? doctorRemarks.trim() : undefined,
-        prescription: action === 'complete' ? prescription.trim() : undefined,
+      const confirmed = await confirmAction({
+        title: 'Complete this referral?',
+        text: `Referral #${detailReferral.id} will be marked as complete and prescriptions will be saved.`,
+        confirmButtonText: 'Complete Referral',
+        cancelButtonText: 'Cancel',
       });
 
-      await notifySuccess(`Referral #${detailReferral.id} updated successfully.`, 'Referral Updated');
-      await loadReferralDetail();
-    } catch (err) {
-      void notifyError(getErrorMessage(err, `Failed to update referral #${detailReferral.id}.`), 'Update Failed');
-    } finally {
-      setSaving(false);
+      if (!confirmed) return;
+
+      setSaving(true);
+
+      try {
+        // 1. Create prescriptions (if any)
+        for (const p of validPrescriptions) {
+          await api.post('/prescriptions', {
+            consultation_id: detailReferral.consultation_id,
+            medicine_id: p.medicine_id,
+            quantity: p.quantity,
+            dosage_instructions: p.dosage_instructions,
+          });
+        }
+
+        // 2. Complete the referral
+        await api.patch(`/referrals/${detailReferral.id}`, {
+          action: 'complete',
+          doctor_remarks: doctorRemarks.trim(),
+          prescription: 'See structured prescriptions', // Legacy fallback
+        });
+
+        await notifySuccess(`Referral #${detailReferral.id} updated and prescriptions saved.`, 'Referral Completed');
+        await loadReferralDetail();
+      } catch (err) {
+        void notifyError(getErrorMessage(err, `Failed to complete referral #${detailReferral.id}.`), 'Update Failed');
+      } finally {
+        setSaving(false);
+      }
+    } else {
+      const confirmed = await confirmAction({
+        title: 'Mark referral in progress?',
+        text: `Referral #${detailReferral.id} will be updated to in_progress.`,
+        confirmButtonText: 'Mark In Progress',
+        cancelButtonText: 'Cancel',
+      });
+
+      if (!confirmed) return;
+
+      setSaving(true);
+      try {
+        await api.patch(`/referrals/${detailReferral.id}`, { action: 'in_progress' });
+        await notifySuccess(`Referral #${detailReferral.id} updated.`, 'Referral Updated');
+        await loadReferralDetail();
+      } catch (err) {
+        void notifyError(getErrorMessage(err, `Failed to update referral #${detailReferral.id}.`), 'Update Failed');
+      } finally {
+        setSaving(false);
+      }
     }
   };
 
@@ -278,7 +306,6 @@ export function DoctorReferralsPage() {
         <nav className="nurse-sidebar-nav" aria-label="Doctor navigation">
           {doctorMenuItems.map((menuItem) => {
             const MenuIcon = menuItem.icon;
-
             return (
               <div className="nurse-nav-item" key={menuItem.key}>
                 <button
@@ -409,46 +436,16 @@ export function DoctorReferralsPage() {
                     <h3>Nurse Consultation Details</h3>
                     <table>
                       <tbody>
-                        <tr>
-                          <td>Patient</td>
-                          <td>{userDisplayName(detailReferral.consultation?.patient?.user)}</td>
-                        </tr>
-                        <tr>
-                          <td>Consultation Type</td>
-                          <td>{normalizeText(detailReferral.consultation?.consultation_type)}</td>
-                        </tr>
-                        <tr>
-                          <td>Chief Complaint</td>
-                          <td>{detailReferral.consultation?.chief_complaint ?? 'N/A'}</td>
-                        </tr>
-                        <tr>
-                          <td>Diagnosis</td>
-                          <td>{detailReferral.consultation?.diagnosis ?? 'N/A'}</td>
-                        </tr>
-                        <tr>
-                          <td>Remarks</td>
-                          <td>{detailReferral.consultation?.remarks ?? 'N/A'}</td>
-                        </tr>
-                        <tr>
-                          <td>Blood Pressure</td>
-                          <td>{normalizeVital(detailReferral.consultation?.blood_pressure)}</td>
-                        </tr>
-                        <tr>
-                          <td>Pulse</td>
-                          <td>{normalizeVital(detailReferral.consultation?.pulse_bpm, 'bpm')}</td>
-                        </tr>
-                        <tr>
-                          <td>Temperature</td>
-                          <td>{normalizeVital(detailReferral.consultation?.temperature_c, 'C')}</td>
-                        </tr>
-                        <tr>
-                          <td>Weight</td>
-                          <td>{normalizeVital(detailReferral.consultation?.weight_kg, 'kg')}</td>
-                        </tr>
-                        <tr>
-                          <td>Referral Reason</td>
-                          <td>{detailReferral.referral_reason}</td>
-                        </tr>
+                        <tr><td>Patient</td><td>{userDisplayName(detailReferral.consultation?.patient?.user)}</td></tr>
+                        <tr><td>Consultation Type</td><td>{normalizeText(detailReferral.consultation?.consultation_type)}</td></tr>
+                        <tr><td>Chief Complaint</td><td>{detailReferral.consultation?.chief_complaint ?? 'N/A'}</td></tr>
+                        <tr><td>Diagnosis</td><td>{detailReferral.consultation?.diagnosis ?? 'N/A'}</td></tr>
+                        <tr><td>Remarks</td><td>{detailReferral.consultation?.remarks ?? 'N/A'}</td></tr>
+                        <tr><td>Blood Pressure</td><td>{normalizeVital(detailReferral.consultation?.blood_pressure)}</td></tr>
+                        <tr><td>Pulse</td><td>{normalizeVital(detailReferral.consultation?.pulse_bpm, 'bpm')}</td></tr>
+                        <tr><td>Temperature</td><td>{normalizeVital(detailReferral.consultation?.temperature_c, 'C')}</td></tr>
+                        <tr><td>Weight</td><td>{normalizeVital(detailReferral.consultation?.weight_kg, 'kg')}</td></tr>
+                        <tr><td>Referral Reason</td><td>{detailReferral.referral_reason}</td></tr>
                       </tbody>
                     </table>
                   </article>
@@ -457,9 +454,9 @@ export function DoctorReferralsPage() {
                     <h3>Doctor Notes</h3>
 
                     <label className="field full-width">
-                      <span>Doctor Remarks</span>
+                      <span>Doctor Remarks (Required)</span>
                       <textarea
-                        rows={6}
+                        rows={4}
                         value={doctorRemarks}
                         onChange={(event) => setDoctorRemarks(event.target.value)}
                         placeholder="Enter your clinical remarks"
@@ -467,18 +464,63 @@ export function DoctorReferralsPage() {
                       />
                     </label>
 
-                    <label className="field full-width">
-                      <span>Prescription</span>
-                      <textarea
-                        rows={6}
-                        value={prescription}
-                        onChange={(event) => setPrescription(event.target.value)}
-                        placeholder="Enter prescription and recommendations"
-                        disabled={detailReferral.status === 'completed' || saving}
-                      />
-                    </label>
+                    <div style={{ marginTop: '1rem', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <h4 style={{ margin: 0 }}>Prescriptions</h4>
+                      {canComplete && (
+                        <button className="button ghost" type="button" onClick={addPrescriptionRow} disabled={saving}>
+                          <Plus size={16} /> Add Medicine
+                        </button>
+                      )}
+                    </div>
 
-                    <div className="action-row">
+                    {prescriptions.map((row) => (
+                      <div key={row.id} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'flex-start' }}>
+                        <select
+                          className="input"
+                          style={{ flex: 2 }}
+                          value={row.medicine_id}
+                          onChange={(e) => updatePrescriptionRow(row.id, 'medicine_id', Number(e.target.value))}
+                          disabled={detailReferral.status === 'completed' || saving}
+                          required
+                        >
+                          <option value="">Select Medicine</option>
+                          {medicines.map((m) => (
+                            <option key={m.id} value={m.id}>{m.name}</option>
+                          ))}
+                        </select>
+                        <input
+                          className="input"
+                          style={{ flex: 1 }}
+                          type="number"
+                          min="1"
+                          placeholder="Qty"
+                          value={row.quantity}
+                          onChange={(e) => updatePrescriptionRow(row.id, 'quantity', Number(e.target.value))}
+                          disabled={detailReferral.status === 'completed' || saving}
+                          required
+                        />
+                        <input
+                          className="input"
+                          style={{ flex: 2 }}
+                          type="text"
+                          placeholder="Instructions (e.g. 1 tab 3x a day)"
+                          value={row.dosage_instructions}
+                          onChange={(e) => updatePrescriptionRow(row.id, 'dosage_instructions', e.target.value)}
+                          disabled={detailReferral.status === 'completed' || saving}
+                        />
+                        <button
+                          type="button"
+                          className="button ghost"
+                          onClick={() => removePrescriptionRow(row.id)}
+                          disabled={detailReferral.status === 'completed' || saving}
+                          title="Remove"
+                        >
+                          <Trash2 size={16} color="#d44974" />
+                        </button>
+                      </div>
+                    ))}
+
+                    <div className="action-row" style={{ marginTop: '1.5rem' }}>
                       {canSetInProgress && (
                         <button
                           className="button secondary"
@@ -511,3 +553,4 @@ export function DoctorReferralsPage() {
     </div>
   );
 }
+

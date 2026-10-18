@@ -12,7 +12,7 @@ class NotificationApiTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function makeAuditLog(User $user, string $action = 'inventory.stock_in'): AuditLog
+    private function makeAuditLog(User $user, string $action = 'inventory.stocked_in'): AuditLog
     {
         return AuditLog::create([
             'user_id' => $user->id,
@@ -105,5 +105,37 @@ class NotificationApiTest extends TestCase
 
         $this->asUser($student)->getJson('/api/v1/notifications')->assertForbidden();
         $this->asUser($student)->getJson('/api/v1/notifications/unread-count')->assertForbidden();
+    }
+        public function test_unread_count_is_scoped_to_the_requested_campus(): void
+    {
+        $campusA = Campus::where('code', 'MAIN')->first();
+        $campusB = Campus::where('code', 'BAJADA_GS')->first();
+        
+        $nurseA = User::factory()->withRole('nurse')->create(['campus_id' => $campusA->id]);
+        $nurseB = User::factory()->withRole('nurse')->create(['campus_id' => $campusB->id]);
+
+        // Create 1 notifiable log at Campus A
+        $this->makeAuditLog($nurseA);
+        
+        // Create 2 notifiable logs at Campus B
+        $this->makeAuditLog($nurseB);
+        $this->makeAuditLog($nurseB);
+
+        // Nurse A reads their Campus A notifications
+        $this->asUser($nurseA)->postJson('/api/v1/notifications/mark-read', [
+            'campus_id' => $campusA->id
+        ])->assertOk();
+
+        // Check Nurse A's unread count for Campus B (should be 2, because they haven't read B's logs)
+        $response = $this->asUser($nurseA)->getJson('/api/v1/notifications/unread-count?campus_id=' . $campusB->id);
+        $response->assertOk()->assertJsonPath('unread', 2);
+        
+        // Check Nurse B's unread count for Campus B (should also be 2, they haven't read anything)
+        $response = $this->asUser($nurseB)->getJson('/api/v1/notifications/unread-count?campus_id=' . $campusB->id);
+        $response->assertOk()->assertJsonPath('unread', 2);
+        
+        // Nurse A checks their own campus (should be 0, they just marked it read)
+        $response = $this->asUser($nurseA)->getJson('/api/v1/notifications/unread-count?campus_id=' . $campusA->id);
+        $response->assertOk()->assertJsonPath('unread', 0);
     }
 }

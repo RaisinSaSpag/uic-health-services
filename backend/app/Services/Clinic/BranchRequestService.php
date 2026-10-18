@@ -11,8 +11,10 @@ use RuntimeException;
 
 class BranchRequestService
 {
-    public function __construct(private readonly AuditLogService $auditLogService)
-    {
+    public function __construct(
+        private readonly AuditLogService $auditLogService,
+        private readonly InventoryService $inventoryService,
+    ) {
     }
 
     public function listForCampus(int $campusId): Collection
@@ -134,8 +136,48 @@ class BranchRequestService
             throw new RuntimeException('Only approved requests can be completed.');
         }
 
-        $request->update(['status' => 'completed']);
+        // --- RISK-09: Move the stock ---
+        
+        // 1. Check if the supplying campus has enough stock
+        $availableStock = $this->inventoryService->availableStockForCampus($request->to_campus_id)
+            ->where('medicine_id', $request->medicine_id)
+            ->sum('available_quantity');
 
+        if ($availableStock < $request->quantity_requested) {
+            throw new RuntimeException("Insufficient stock at supplying campus. Available: {$availableStock}, Requested: {$request->quantity_requested}");
+        }
+
+        // 2. Dispense the stock from the supplying campus (FIFO)
+        $remainingToDeduct = $request->quantity_requested;
+        $supplyBatches = $this->inventoryService->availableStockForCampus($request->to_campus_id)
+            ->where('medicine_id', $request->medicine_id)
+            ->sortBy('date_received');
+
+        foreach ($supplyBatches as $batch) {
+            if ($remainingToDeduct <= 0) break;
+
+            $deductAmount = min($remainingToDeduct, $batch->available_quantity);
+            if ($deductAmount > 0) {
+                $this->inventoryService->dispense([
+                    'stock_in_id' => $batch->id,
+                    'quantity_dispensed' => $deductAmount,
+                ], $actorId);
+
+                $remainingToDeduct -= $deductAmount;
+            }
+        }
+
+        // 3. Create a new stock-in record for the requesting campus
+        $this->inventoryService->stockIn([
+            'medicine_id' => $request->medicine_id,
+            'campus_id' => $request->from_campus_id,
+            'quantity' => $request->quantity_requested,
+            'date_received' => now()->format('Y-m-d'),
+            'expiration_date' => now()->addYear()->format('Y-m-d'),
+        ], $actorId);
+
+        // 4. Update the request status
+        $request->update(['status' => 'completed']);
         $this->auditLogService->record($actorId, 'branch_request.completed', 'branch_request', $request->id);
 
         return $request->fresh();
