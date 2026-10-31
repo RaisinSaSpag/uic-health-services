@@ -404,6 +404,18 @@ export function NurseQueuePage() {
             <div>
               <h2>Nurse Dashboard</h2>
             </div>
+      <div style={{ display: 'flex', gap: '0.5rem', marginRight: '1rem' }}>
+  <button className="button primary" onClick={() => navigate('/nurse/walk-in')}>
+    + Register Walk-In
+  </button>
+  <button 
+    className="button" 
+    style={{ background: '#f59e0b', color: '#fff' }} 
+    onClick={() => navigate('/nurse/walk-in?type=injury')}
+  >
+    + Log Injury (Quick)
+  </button>
+</div>
 
             <div className="nurse-dashboard-actions">
               <div className="nurse-datetime" aria-live="polite">

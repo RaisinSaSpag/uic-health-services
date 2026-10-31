@@ -1,4 +1,4 @@
-export type RoleName = 'student' | 'employee' | 'nurse' | 'doctor' | 'admin' | string;
+export type RoleName = 'student' | 'employee' | 'nurse' | 'doctor' | 'admin' | 'coordinator' | string;
 
 export interface RoleRecord {
   id: number;
@@ -14,6 +14,7 @@ export interface UserRecord {
   role_id?: number | null;
   campus_id?: number | null;
   department_id?: number | null;
+  must_change_password?: boolean;
 }
 
 export interface AuthUser {
@@ -25,6 +26,7 @@ export interface AuthUser {
   campus_id?: number | null;
   campus?: string | null;
   department?: string | null;
+  must_change_password?: boolean;
 }
 
 export interface AuthCallbackResponse {
@@ -47,6 +49,7 @@ export interface Patient {
   department_id?: number | null;
   patient_number: string;
   patient_type: string;
+  patient_category?: string | null;
   sex: string;
   birth_date: string;
   age?: number | null;
@@ -134,6 +137,13 @@ export interface Consultation {
   consulted_at?: string | null;
   started_at?: string | null;
   completed_at?: string | null;
+  
+  // Telemed/Referral Fields
+  is_telemed?: boolean;
+  telemed_link?: string | null;
+  referral_status?: string;
+  referral_notes?: string | null;
+
   patient?: Patient;
   nurse?: UserRecord | null;
   referral?: Referral | null;

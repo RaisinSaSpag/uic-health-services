@@ -7,20 +7,16 @@ export function RoleLandingPage() {
 
   const role = normalizeRoleName(user?.role);
 
-  if (role === 'student' || role === 'employee') {
-    return <Navigate to="/patient" replace />;
+  if (role === 'nurse') {
+    return <Navigate to="/nurse" replace />;
   }
 
-  if (role === 'nurse' || role === 'coordinator') {
-    return <Navigate to="/nurse" replace />;
+  if (role === 'coordinator') {
+    return <Navigate to="/coordinator" replace />;
   }
 
   if (role === 'doctor') {
     return <Navigate to="/doctor" replace />;
-  }
-
-  if (role === 'admin') {
-    return <Navigate to="/admin" replace />;
   }
 
   return (

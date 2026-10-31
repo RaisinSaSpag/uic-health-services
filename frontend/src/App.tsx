@@ -22,13 +22,26 @@ import { NurseQueuePage } from './pages/NurseQueuePage';
 import { NurseRecordsPage } from './pages/NurseRecordsPage';
 import { NurseReferralsPage } from './pages/NurseReferralsPage';
 import { NurseReportsPage } from './pages/NurseReportsPage';
-import { PatientPortalPage } from './pages/PatientPortalPage';
 import { RoleLandingPage } from './pages/RoleLandingPage';
 import { NurseInventoryHistoryPage } from './pages/NurseInventoryHistoryPage';
 import { NurseInventoryAboutPage } from './pages/NurseInventoryAboutPage';
 import { NurseInventoryReportsPage } from './pages/NurseInventoryReportsPage';
+import { NurseWalkInRegistrationPage } from './pages/NurseWalkInRegistrationPage';
+import { CoordinatorDashboardPage } from './pages/CoordinatorDashboardPage';
+import { ForcePasswordChangePage } from './pages/ForcePasswordChangePage';
+import { PatientPortalPage } from './pages/PatientPortalPage'; // <-- ADDED
+import { useAuth } from './context/AuthContext';
 
-
+// Guard component that must return an <Outlet /> to render child routes
+function MustChangePasswordGuard() {
+  const { user } = useAuth();
+  
+  if (user?.must_change_password) {
+    return <ForcePasswordChangePage />;
+  }
+  
+  return <AppShell />;
+}
 
 function App() {
   return (
@@ -36,298 +49,58 @@ function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/auth/callback" element={<AuthCallbackPage />} />
 
+      {/* Protected Routes */}
       <Route element={<ProtectedRoute />}>
-        <Route element={<AppShell />}>
+        
+        {/* Guard wraps the AppShell */}
+        <Route element={<MustChangePasswordGuard />}>
+          
           <Route index element={<RoleLandingPage />} />
 
-          <Route
-            path="patient"
-            element={
-              <RoleRoute roles={['student', 'employee']}>
-                <PatientPortalPage />
-              </RoleRoute>
-            }
-          />
-
-          <Route
-            path="nurse"
-            element={
-              <RoleRoute roles={['nurse', 'coordinator', 'admin']}>
-                <NurseQueuePage />
-              </RoleRoute>
-            }
-          />
-
-          <Route
-            path="nurse/records/:patientType"
-            element={
-              <RoleRoute roles={['nurse', 'coordinator', 'admin']}>
-                <NurseRecordsPage />
-              </RoleRoute>
-            }
-          />
-
-          <Route
-            path="nurse/print-prescription"
-            element={
-              <RoleRoute roles={['nurse', 'coordinator', 'admin']}>
-                <NursePrintPrescriptionPage />
-              </RoleRoute>
-            }
-          />
-
-          <Route
-            path="nurse/reports"
-            element={
-              <RoleRoute roles={['nurse', 'coordinator', 'admin']}>
-                <NurseReportsPage />
-              </RoleRoute>
-            }
-          />
-
-          <Route
-            path="nurse/about"
-            element={
-              <RoleRoute roles={['nurse', 'coordinator', 'admin']}>
-                <NurseAboutPage />
-              </RoleRoute>
-            }
-          />
-
-          <Route
-            path="nurse/patients/:patientId"
-            element={
-              <RoleRoute roles={['nurse', 'coordinator', 'admin']}>
-                <NursePatientDetailPage />
-              </RoleRoute>
-            }
-          />
-
-          <Route
-            path="nurse/patients/:patientId/new-consultation"
-            element={
-              <RoleRoute roles={['nurse', 'coordinator', 'admin']}>
-                <NurseConsultationTypePage />
-              </RoleRoute>
-            }
-          />
-
-          <Route
-            path="nurse/patients/:patientId/new-consultation/:consultationType"
-            element={
-              <RoleRoute roles={['nurse', 'coordinator', 'admin']}>
-                <NurseConsultationFormPage />
-              </RoleRoute>
-            }
-          />
-
-          {/* ============ Inventory Module ============ */}
-          <Route
-            path="nurse/inventory"
-            element={
-              <RoleRoute roles={['nurse', 'coordinator', 'admin']}>
-                <NurseInventoryDashboardPage />
-              </RoleRoute>
-            }
-          />
-
-          <Route
-            path="nurse/inventory/stocks"
-            element={
-              <RoleRoute roles={['nurse', 'coordinator', 'admin']}>
-                <NurseInventoryStocksPage />
-              </RoleRoute>
-            }
-          />
-
-          <Route
-            path="nurse/inventory/requests"
-            element={
-              <RoleRoute roles={['nurse', 'coordinator', 'admin']}>
-                <NurseInventoryRequestsPage />
-              </RoleRoute>
-            }
-          />
-          <Route
-            path="nurse/inventory/history"
-           element={
-              <RoleRoute roles={['nurse', 'coordinator', 'admin']}>
-                <NurseInventoryHistoryPage />
+          {/* ============ PATIENT PORTAL ============ */}
+          <Route path="patient" element={
+            <RoleRoute roles={['student', 'employee']}>
+              <PatientPortalPage />
             </RoleRoute>
-            }
-          />
-          <Route
-            path="nurse/inventory/about"
-             element={
-             <RoleRoute roles={['nurse', 'coordinator', 'admin']}>
-               <NurseInventoryAboutPage />
-             </RoleRoute>
-             }
-           />
+          } />
 
-          <Route
-            path="nurse/inventory/reports"
-              element={
-              <RoleRoute roles={['nurse', 'coordinator', 'admin']}>
-                <NurseInventoryReportsPage />
-              </RoleRoute>
-             }
-           />
+          {/* ============ NURSE MODULE ============ */}
+          <Route path="nurse" element={<RoleRoute roles={['nurse']}><NurseQueuePage /></RoleRoute>} />
+          <Route path="nurse/records/:patientType" element={<RoleRoute roles={['nurse']}><NurseRecordsPage /></RoleRoute>} />
+          <Route path="nurse/print-prescription" element={<RoleRoute roles={['nurse']}><NursePrintPrescriptionPage /></RoleRoute>} />
+          <Route path="nurse/reports" element={<RoleRoute roles={['nurse']}><NurseReportsPage /></RoleRoute>} />
+          <Route path="nurse/about" element={<RoleRoute roles={['nurse']}><NurseAboutPage /></RoleRoute>} />
+          <Route path="nurse/patients/:patientId" element={<RoleRoute roles={['nurse']}><NursePatientDetailPage /></RoleRoute>} />
+          <Route path="nurse/patients/:patientId/new-consultation" element={<RoleRoute roles={['nurse']}><NurseConsultationTypePage /></RoleRoute>} />
+          <Route path="nurse/patients/:patientId/new-consultation/:consultationType" element={<RoleRoute roles={['nurse']}><NurseConsultationFormPage /></RoleRoute>} />
+          
+          <Route path="nurse/walk-in" element={<RoleRoute roles={['nurse']}><NurseWalkInRegistrationPage /></RoleRoute>} />
 
-          {/* ============ Doctor Module ============ */}
-          <Route
-            path="doctor"
-            element={
-              <RoleRoute roles={['doctor', 'admin']}>
-                <DoctorDashboardPage />
-              </RoleRoute>
-            }
-          />
+          <Route path="nurse/inventory" element={<RoleRoute roles={['nurse']}><NurseInventoryDashboardPage /></RoleRoute>} />
+          <Route path="nurse/inventory/stocks" element={<RoleRoute roles={['nurse']}><NurseInventoryStocksPage /></RoleRoute>} />
+          <Route path="nurse/inventory/requests" element={<RoleRoute roles={['nurse']}><NurseInventoryRequestsPage /></RoleRoute>} />
+          <Route path="nurse/inventory/history" element={<RoleRoute roles={['nurse']}><NurseInventoryHistoryPage /></RoleRoute>} />
+          <Route path="nurse/inventory/about" element={<RoleRoute roles={['nurse']}><NurseInventoryAboutPage /></RoleRoute>} />
+          <Route path="nurse/inventory/reports" element={<RoleRoute roles={['nurse']}><NurseInventoryReportsPage /></RoleRoute>} />
+          
+          <Route path="nurse/referrals" element={<RoleRoute roles={['nurse']}><NurseReferralsPage /></RoleRoute>} />
+          <Route path="nurse/referrals/:referralId" element={<RoleRoute roles={['nurse']}><NurseReferralsPage /></RoleRoute>} />
+          <Route path="nurse/chat" element={<RoleRoute roles={['nurse']}><ChatPage /></RoleRoute>} />
+          <Route path="nurse/notifications" element={<RoleRoute roles={['nurse']}><NotificationPage /></RoleRoute>} />
 
-          <Route
-            path="doctor/referrals"
-            element={
-              <RoleRoute roles={['doctor', 'admin']}>
-                <DoctorReferralsPage />
-              </RoleRoute>
-            }
-          />
+          {/* ============ DOCTOR MODULE ============ */}
+          <Route path="doctor" element={<RoleRoute roles={['doctor']}><DoctorDashboardPage /></RoleRoute>} />
+          <Route path="doctor/referrals" element={<RoleRoute roles={['doctor']}><DoctorReferralsPage /></RoleRoute>} />
+          <Route path="doctor/referrals/:referralId" element={<RoleRoute roles={['doctor']}><DoctorReferralsPage /></RoleRoute>} />
+          <Route path="doctor/about" element={<RoleRoute roles={['doctor']}><DoctorAboutPage /></RoleRoute>} />
+          <Route path="doctor/chat" element={<RoleRoute roles={['doctor']}><ChatPage /></RoleRoute>} />
+          <Route path="doctor/notifications" element={<RoleRoute roles={['doctor']}><NotificationPage /></RoleRoute>} />
 
-          <Route
-            path="doctor/referrals/:referralId"
-            element={
-              <RoleRoute roles={['doctor', 'admin']}>
-                <DoctorReferralsPage />
-              </RoleRoute>
-            }
-          />
-
-          <Route
-            path="doctor/about"
-            element={
-              <RoleRoute roles={['doctor', 'admin']}>
-                <DoctorAboutPage />
-              </RoleRoute>
-            }
-          />
-
-                    {/* ============ Doctor Inventory (read-only) ============ */}
-          <Route
-            path="doctor/inventory"
-            element={
-              <RoleRoute roles={['doctor', 'admin']}>
-                <NurseInventoryDashboardPage />
-              </RoleRoute>
-            }
-          />
-
-          <Route
-            path="doctor/inventory/stocks"
-            element={
-              <RoleRoute roles={['doctor', 'admin']}>
-                <NurseInventoryStocksPage />
-              </RoleRoute>
-            }
-          />
-
-          <Route
-            path="doctor/inventory/requests"
-            element={
-              <RoleRoute roles={['doctor', 'admin']}>
-                <NurseInventoryRequestsPage />
-              </RoleRoute>
-            }
-          />
-
-          <Route
-            path="doctor/inventory/history"
-            element={
-              <RoleRoute roles={['doctor', 'admin']}>
-                <NurseInventoryHistoryPage />
-              </RoleRoute>
-            }
-          />
-
-          <Route
-            path="doctor/inventory/reports"
-            element={
-              <RoleRoute roles={['doctor', 'admin']}>
-                <NurseInventoryReportsPage />
-              </RoleRoute>
-            }
-          />
-
-          <Route
-            path="doctor/inventory/about"
-            element={
-              <RoleRoute roles={['doctor', 'admin']}>
-                <NurseInventoryAboutPage />
-              </RoleRoute>
-            }
-          />
-
-
-          <Route
-            path="nurse/referrals"
-            element={
-              <RoleRoute roles={['nurse', 'coordinator', 'admin']}>
-                <NurseReferralsPage />
-              </RoleRoute>
-            }
-          />
-
-          <Route
-            path="nurse/referrals/:referralId"
-            element={
-              <RoleRoute roles={['nurse', 'coordinator', 'admin']}>
-                <NurseReferralsPage />
-              </RoleRoute>
-            }
-          />
-
-          <Route
-            path="admin"
-            element={
-              <RoleRoute roles={['admin']}>
-                <AdminAuditPage />
-              </RoleRoute>
-            }
-          />
-                    <Route
-            path="nurse/chat"
-            element={
-              <RoleRoute roles={['nurse', 'coordinator', 'admin']}>
-                <ChatPage />
-              </RoleRoute>
-            }
-          />
-
-          <Route
-            path="doctor/chat"
-            element={
-              <RoleRoute roles={['doctor', 'admin']}>
-                <ChatPage />
-              </RoleRoute>
-            }
-          />
-
-                    <Route
-            path="nurse/notifications"
-            element={
-              <RoleRoute roles={['nurse', 'coordinator', 'admin']}>
-                <NotificationPage />
-              </RoleRoute>
-            }
-          />
-
-          <Route
-            path="doctor/notifications"
-            element={
-              <RoleRoute roles={['doctor', 'admin']}>
-                <NotificationPage />
-              </RoleRoute>
-            }
-          />
+          {/* ============ COORDINATOR MODULE ============ */}
+          <Route path="coordinator" element={<RoleRoute roles={['coordinator']}><CoordinatorDashboardPage /></RoleRoute>} />
+          <Route path="coordinator/audit-logs" element={<RoleRoute roles={['coordinator']}><AdminAuditPage /></RoleRoute>} />
+          <Route path="coordinator/chat" element={<RoleRoute roles={['coordinator']}><ChatPage /></RoleRoute>} />
+          <Route path="coordinator/notifications" element={<RoleRoute roles={['coordinator']}><NotificationPage /></RoleRoute>} />
 
         </Route>
       </Route>

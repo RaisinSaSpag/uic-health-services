@@ -11,12 +11,13 @@ class Message extends Model
 {
     use HasFactory;
 
-    protected $fillable = [
-        'sender_id',
-        'recipient_id',
-        'body',
-        'read_at',
-    ];
+protected $fillable = [
+    'sender_id',
+    'recipient_id',
+    'body',
+    'read_at',
+    'is_group_chat',
+];
 
     protected function casts(): array
     {

@@ -105,7 +105,7 @@ export function NurseInventoryStocksPage() {
   const [isArchiveOpen, setArchiveOpen] = useState(false);
   const [archiveMedicine, setArchiveMedicine] = useState<Medicine | null>(null);
   const [archiveBatches, setArchiveBatches] = useState<ArchiveBatch[]>([]);
-    const [, setArchiveLoadingBatches] = useState(false);
+  const [, setArchiveLoadingBatches] = useState(false);
 
   // Archived list modal state
   const [isArchivedOpen, setArchivedOpen] = useState(false);
@@ -411,9 +411,8 @@ export function NurseInventoryStocksPage() {
 
   return (
     <div className="nurse-dashboard-page">
-      {/* Sidebar Navigation */}
       <aside className="nurse-sidebar" aria-label="Inventory sidebar">
-                <div className="nurse-sidebar-brand">
+        <div className="nurse-sidebar-brand">
           <img className="nurse-sidebar-logo" src="/logo-white.png" alt="UIC logo" />
           <div className="nurse-sidebar-identity">
             <h3>{userName}</h3>
@@ -452,7 +451,6 @@ export function NurseInventoryStocksPage() {
         </nav>
       </aside>
 
-      {/* Main Content Area */}
       <main className="main-content">
         <header className="page-header">
           <div>
@@ -475,7 +473,6 @@ export function NurseInventoryStocksPage() {
           </div>
         </header>
 
-        {/* Search & Stats Bar */}
         <div className="panel mb-4">
           <div className="flex items-center justify-between gap-4">
             <div className="search-bar flex-1 relative">
@@ -494,7 +491,6 @@ export function NurseInventoryStocksPage() {
           </div>
         </div>
 
-        {/* Stocks Table */}
         <div className="panel">
           {loading ? (
             <p className="muted text-center py-8">Loading inventory stock levels...</p>
@@ -507,8 +503,7 @@ export function NurseInventoryStocksPage() {
                   <tr>
                     <th>Medicine Name</th>
                     <th>Category</th>
-                    <th>Available Stock</th>
-                    <th>Status</th>
+                    <th>Stock on Hand</th>
                     {!isDoctor && <th style={{ textAlign: 'right' }}>Actions</th>}
                   </tr>
                 </thead>
@@ -519,15 +514,16 @@ export function NurseInventoryStocksPage() {
                       <tr key={medicine.id}>
                         <td className="font-medium">{medicine.name}</td>
                         <td className="muted">{medicine.category}</td>
-                        <td className="font-semibold text-gray-800">{totalStock} units</td>
                         <td>
-                          {totalStock > 20 ? (
-                            <span className="badge success">In Stock</span>
-                          ) : totalStock > 0 ? (
-                            <span className="badge warning">Low Stock</span>
-                          ) : (
-                            <span className="badge danger">Out of Stock</span>
-                          )}
+                          <span
+                            style={{
+                              color: totalStock === 0 ? 'red' : totalStock <= 20 ? '#f59e0b' : 'green',
+                              fontWeight: 'bold',
+                            }}
+                          >
+                            {totalStock}
+                          </span>{' '}
+                          units
                         </td>
                         {!isDoctor && (
                           <td>
@@ -587,7 +583,7 @@ export function NurseInventoryStocksPage() {
         </div>
       </main>
 
-      {/* Catalog Add/Edit Modal */}
+      {/* Modals */}
       {isModalOpen && (
         <div className="modal-backdrop" onClick={closeModal}>
           <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
@@ -631,7 +627,6 @@ export function NurseInventoryStocksPage() {
         </div>
       )}
 
-      {/* Stock-In Modal */}
       {isStockInOpen && stockInMedicine && (
         <div className="modal-backdrop" onClick={closeStockInModal}>
           <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
@@ -683,7 +678,6 @@ export function NurseInventoryStocksPage() {
         </div>
       )}
 
-      {/* Dispense Modal */}
       <DispenseMedicineModal
         isOpen={isDispenseOpen}
         onClose={closeDispenseModal}
@@ -693,7 +687,6 @@ export function NurseInventoryStocksPage() {
         onSubmit={submitDispense}
       />
 
-      {/* Archive Modal */}
       <ArchiveMedicineModal
         isOpen={isArchiveOpen}
         onClose={closeArchiveModal}
@@ -703,7 +696,6 @@ export function NurseInventoryStocksPage() {
         onSubmit={submitArchive}
       />
 
-      {/* Archived Medicines Log Modal */}
       <ArchivedMedicinesModal
         isOpen={isArchivedOpen}
         onClose={() => setArchivedOpen(false)}

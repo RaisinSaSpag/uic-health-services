@@ -31,6 +31,10 @@ class Consultation extends Model
         'consulted_at',
         'started_at',
         'completed_at',
+        'is_telemed',
+        'telemed_link',
+        'referral_status',
+        'referral_notes',
     ];
 
     protected function casts(): array

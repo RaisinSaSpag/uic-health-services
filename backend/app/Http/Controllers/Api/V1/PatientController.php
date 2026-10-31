@@ -294,4 +294,56 @@ class PatientController extends Controller
             'patient_id' => $id,
         ], 405);
     }
+
+    /**
+     * Register a walk-in patient (Nurse creates profile without a user account).
+     */
+    public function walkIn(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'first_name' => ['required', 'string', 'max:255'],
+            'last_name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email', 'max:255', 'unique:users,email'],
+            'age' => ['nullable', 'integer', 'min:1', 'max:120'],
+            'sex' => ['required', 'string', 'max:20'],
+            'patient_category' => ['required', 'in:grade_school,high_school,college,employee'],
+            'patient_type' => ['required', 'in:student,employee'],
+            'campus_id' => ['required', 'integer', 'exists:campuses,id'],
+            'course_program' => ['nullable', 'string', 'max:255'],
+            'year_level' => ['nullable', 'string', 'max:255'],
+            'section' => ['nullable', 'string', 'max:255'],
+            'remarks' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        // Create the real User account using the student's UIC email
+        $user = \App\Models\User::create([
+            'first_name' => $validated['first_name'],
+            'last_name' => $validated['last_name'],
+            'email' => strtolower($validated['email']),
+            'password' => \Illuminate\Support\Facades\Hash::make(strtolower($validated['email'])),
+            'role_id' => \App\Models\Role::where('name', 'student')->value('id'),
+            'campus_id' => $validated['campus_id'],
+            'is_active' => true,
+            'must_change_password' => true,
+        ]);
+
+        $patientNumber = 'WALKIN-' . date('Y') . '-' . str_pad(\App\Models\Patient::count() + 1, 5, '0', STR_PAD_LEFT);
+
+        $patient = \App\Models\Patient::create([
+            'user_id' => $user->id,
+            'campus_id' => $validated['campus_id'],
+            'patient_number' => $patientNumber,
+            'patient_type' => $validated['patient_type'],
+            'patient_category' => $validated['patient_category'],
+            'sex' => $validated['sex'],
+            'birth_date' => $validated['birth_date'] ?? '2000-01-01',
+            'age' => $validated['age'] ?? null,
+            'course_program' => $validated['course_program'] ?? null,
+            'year_level' => $validated['year_level'] ?? null,
+            'section' => $validated['section'] ?? null,
+            'notes' => $validated['remarks'] ?? null,
+        ]);
+
+        return response()->json($patient->load('user'), 201);
+    }
 }

@@ -32,6 +32,7 @@ class User extends Authenticatable
         'last_name',
         'is_active',
         'last_login_at',
+        'must_change_password',
     ];
 
     /**

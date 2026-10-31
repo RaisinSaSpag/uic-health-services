@@ -4,11 +4,9 @@ import {
   Bell,
   ArrowUpRight,
   CheckCircle2,
-  ClipboardCheck,
   Info,
   LayoutDashboard,
   MessageSquare,
-  Package,
   RefreshCw,
   Search,
   Stethoscope,
@@ -22,7 +20,7 @@ import { formatDateTime, userDisplayName } from '../lib/format';
 import { getErrorMessage } from '../lib/http';
 import type { Consultation, PaginatedResponse, Referral } from '../types/hsms';
 
-type DoctorSection = 'dashboard' | 'inventory' | 'referrals' | 'about' | 'chat' | 'notifications';
+type DoctorSection = 'dashboard' | 'referrals' | 'about' | 'chat' | 'notifications';
 
 interface DoctorMenuItem {
   key: DoctorSection;
@@ -31,7 +29,6 @@ interface DoctorMenuItem {
 }
 
 interface DoctorDashboardStats {
-  totalReferrals: number;
   pendingReferrals: number;
   inProgressReferrals: number;
   completedReferrals: number;
@@ -44,11 +41,6 @@ const doctorMenuItems: DoctorMenuItem[] = [
     icon: LayoutDashboard,
   },
   {
-    key: 'inventory',
-    label: 'Inventory',
-    icon: Package,
-  },
-  {
     key: 'referrals',
     label: 'Referrals',
     icon: Stethoscope,
@@ -58,7 +50,7 @@ const doctorMenuItems: DoctorMenuItem[] = [
     label: 'About',
     icon: Info,
   },
- {
+  {
     key: 'chat',
     label: 'Messages',
     icon: MessageSquare,
@@ -69,17 +61,8 @@ const doctorMenuItems: DoctorMenuItem[] = [
     icon: Bell,
   },
 ];
-const doctorInventorySubItems: Array<{ key: string; label: string; path: string }> = [
-  { key: 'inventory_dashboard', label: 'Dashboard', path: '/doctor/inventory' },
-  { key: 'inventory_stocks', label: 'Stocks', path: '/doctor/inventory/stocks' },
-  { key: 'inventory_requests', label: 'Branch Requests', path: '/doctor/inventory/requests' },
-  { key: 'inventory_history', label: 'History', path: '/doctor/inventory/history' },
-  { key: 'inventory_reports', label: 'Reports', path: '/doctor/inventory/reports' },
-  { key: 'inventory_about', label: 'About', path: '/doctor/inventory/about' },
-];
 
 const defaultStats: DoctorDashboardStats = {
-  totalReferrals: 0,
   pendingReferrals: 0,
   inProgressReferrals: 0,
   completedReferrals: 0,
@@ -107,7 +90,6 @@ export function DoctorDashboardPage() {
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   const [activeSection, setActiveSection] = useState<DoctorSection>('dashboard');
-  const [isInventoryOpen, setIsInventoryOpen] = useState(false);
   const [stats, setStats] = useState<DoctorDashboardStats>(defaultStats);
   const [recentConsultations, setRecentConsultations] = useState<Consultation[]>([]);
   const [recentSearch, setRecentSearch] = useState('');
@@ -129,9 +111,8 @@ export function DoctorDashboardPage() {
     setLoading(true);
 
     try {
-      const [allReferralsResponse, pendingReferralsResponse, inProgressReferralsResponse, completedReferralsResponse, recentConsultationsResponse] =
+      const [pendingReferralsResponse, inProgressReferralsResponse, completedReferralsResponse, recentConsultationsResponse] =
         await Promise.all([
-          api.get<PaginatedResponse<Referral>>('/referrals', { params: { per_page: 1 } }),
           api.get<PaginatedResponse<Referral>>('/referrals', { params: { status: 'pending_doctor', per_page: 1 } }),
           api.get<PaginatedResponse<Referral>>('/referrals', { params: { status: 'in_progress', per_page: 1 } }),
           api.get<PaginatedResponse<Referral>>('/referrals', { params: { status: 'completed', per_page: 1 } }),
@@ -144,7 +125,6 @@ export function DoctorDashboardPage() {
         ]);
 
       setStats({
-        totalReferrals: allReferralsResponse.data.total,
         pendingReferrals: pendingReferralsResponse.data.total,
         inProgressReferrals: inProgressReferralsResponse.data.total,
         completedReferrals: completedReferralsResponse.data.total,
@@ -190,12 +170,6 @@ export function DoctorDashboardPage() {
       return;
     }
 
-    if (section === 'inventory') {
-      setIsInventoryOpen((current) => !current);
-      return;
-    }
-
-    
     if (section === 'chat') {
       navigate('/doctor/chat');
       return;
@@ -214,10 +188,6 @@ export function DoctorDashboardPage() {
     if (section === 'about') {
       navigate('/doctor/about');
     }
-  };
-
-  const onInventorySubItemClick = (path: string): void => {
-    navigate(path);
   };
 
   return (
@@ -245,20 +215,6 @@ export function DoctorDashboardPage() {
                   <MenuIcon className="nurse-side-icon" size={18} strokeWidth={2.2} />
                   <span className="nurse-side-label">{menuItem.label}</span>
                 </button>
-                {menuItem.key === 'inventory' && isInventoryOpen && (
-                  <div className="nurse-sidebar-submenu open" role="menu">
-                    {doctorInventorySubItems.map((subItem) => (
-                      <button
-                        key={subItem.key}
-                        className="nurse-search-option"
-                        onClick={() => onInventorySubItemClick(subItem.path)}
-                        type="button"
-                      >
-                        <span>{subItem.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
               </div>
             );
           })}
@@ -287,16 +243,6 @@ export function DoctorDashboardPage() {
         </section>
 
         <section className="nurse-kpi-grid" aria-label="Doctor metrics">
-          <article className="panel nurse-kpi-card">
-            <div className="nurse-kpi-head">
-              <span className="nurse-kpi-icon-wrap">
-                <ClipboardCheck className="nurse-kpi-icon" size={16} strokeWidth={2.2} />
-              </span>
-              <p className="nurse-kpi-label">Total Referral Consultations</p>
-            </div>
-            <p className="nurse-kpi-value">{stats.totalReferrals}</p>
-          </article>
-
           <article className="panel nurse-kpi-card">
             <div className="nurse-kpi-head">
               <span className="nurse-kpi-icon-wrap">
@@ -393,3 +339,4 @@ export function DoctorDashboardPage() {
     </div>
   );
 }
+

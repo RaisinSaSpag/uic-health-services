@@ -5,7 +5,6 @@ import {
   ArrowLeftCircle,
   Info,
   LayoutDashboard,
-  Package,
   Stethoscope,
   MessageSquare,
   type LucideIcon,
@@ -20,7 +19,7 @@ import { formatDateTime, userDisplayName } from '../lib/format';
 import { getErrorMessage } from '../lib/http';
 import type { PaginatedResponse, Referral, Medicine } from '../types/hsms';
 
-type DoctorSection = 'dashboard' | 'inventory' | 'referrals' | 'about' | 'chat' | 'notifications';
+type DoctorSection = 'dashboard' | 'referrals' | 'about' | 'chat' | 'notifications';
 
 interface DoctorMenuItem {
   key: DoctorSection;
@@ -37,27 +36,16 @@ interface PrescriptionRow {
 
 const doctorMenuItems: DoctorMenuItem[] = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { key: 'inventory', label: 'Inventory', icon: Package },
   { key: 'referrals', label: 'Referrals', icon: Stethoscope },
   { key: 'about', label: 'About', icon: Info },
   { key: 'chat', label: 'Messages', icon: MessageSquare },
   { key: 'notifications', label: 'Notifications', icon: Bell },
 ];
 
-const doctorInventorySubItems: Array<{ key: string; label: string; path: string }> = [
-  { key: 'inventory_dashboard', label: 'Dashboard', path: '/doctor/inventory' },
-  { key: 'inventory_stocks', label: 'Stocks', path: '/doctor/inventory/stocks' },
-  { key: 'inventory_requests', label: 'Branch Requests', path: '/doctor/inventory/requests' },
-  { key: 'inventory_history', label: 'History', path: '/doctor/inventory/history' },
-  { key: 'inventory_reports', label: 'Reports', path: '/doctor/inventory/reports' },
-  { key: 'inventory_about', label: 'About', path: '/doctor/inventory/about' },
-];
-
 const referralStatusOptions = [
-  { value: '', label: 'All statuses' },
-  { value: 'pending_doctor', label: 'pending_doctor' },
-  { value: 'in_progress', label: 'in_progress' },
-  { value: 'completed', label: 'completed' },
+  { value: '', label: 'Active (Pending + In Progress)' },
+  { value: 'pending_doctor', label: 'Pending' },
+  { value: 'in_progress', label: 'In Progress' },
 ];
 
 function normalizeText(value: string | null | undefined): string {
@@ -88,7 +76,6 @@ export function DoctorReferralsPage() {
   const { referralId: rawReferralId } = useParams<{ referralId: string }>();
 
   const [activeSection, setActiveSection] = useState<DoctorSection>('referrals');
-  const [isInventoryOpen, setIsInventoryOpen] = useState(false);
   const [referrals, setReferrals] = useState<Referral[]>([]);
   const [statusFilter, setStatusFilter] = useState('');
   const [search, setSearch] = useState('');
@@ -116,7 +103,9 @@ export function DoctorReferralsPage() {
       const response = await api.get<PaginatedResponse<Referral>>('/referrals', {
         params: { per_page: 100, ...(statusFilter ? { status: statusFilter } : {}) },
       });
-      setReferrals(response.data.data);
+      // Filter out completed referrals on the frontend as a safety net
+      const activeReferrals = response.data.data.filter((r) => r.status !== 'completed');
+      setReferrals(activeReferrals);
     } catch (err) {
       void notifyError(getErrorMessage(err, 'Unable to load doctor referrals.'), 'Load Failed');
     } finally {
@@ -126,8 +115,7 @@ export function DoctorReferralsPage() {
 
   const loadMedicines = useCallback(async () => {
     try {
-      const response = await api.get<PaginatedResponse<Medicine> | Medicine[]>('/medicines', { params: { per_page: 100 }});
-      // Handle both paginated and raw array responses just in case
+      const response = await api.get<PaginatedResponse<Medicine> | Medicine[]>('/medicines', { params: { per_page: 100 } });
       const data = Array.isArray(response.data) ? response.data : response.data.data;
       setMedicines(data);
     } catch {
@@ -187,13 +175,8 @@ export function DoctorReferralsPage() {
     if (section === 'dashboard') { navigate('/doctor'); return; }
     if (section === 'chat') { navigate('/doctor/chat'); return; }
     if (section === 'notifications') { navigate('/doctor/notifications'); return; }
-    if (section === 'inventory') { setIsInventoryOpen((current) => !current); return; }
     if (section === 'referrals') { navigate('/doctor/referrals'); return; }
     if (section === 'about') { navigate('/doctor/about'); }
-  };
-
-  const onInventorySubItemClick = (path: string): void => {
-    navigate(path);
   };
 
   // --- Prescription Row Handlers ---
@@ -223,7 +206,6 @@ export function DoctorReferralsPage() {
         return;
       }
       
-      // Validate prescriptions if any are added
       const validPrescriptions = prescriptions.filter(p => p.medicine_id !== '' && p.quantity !== '');
       if (prescriptions.length > 0 && validPrescriptions.length !== prescriptions.length) {
         void notifyError('Please fill in all medicine and quantity fields for prescriptions.', 'Incomplete Prescriptions');
@@ -242,7 +224,6 @@ export function DoctorReferralsPage() {
       setSaving(true);
 
       try {
-        // 1. Create prescriptions (if any)
         for (const p of validPrescriptions) {
           await api.post('/prescriptions', {
             consultation_id: detailReferral.consultation_id,
@@ -252,15 +233,14 @@ export function DoctorReferralsPage() {
           });
         }
 
-        // 2. Complete the referral
         await api.patch(`/referrals/${detailReferral.id}`, {
           action: 'complete',
           doctor_remarks: doctorRemarks.trim(),
-          prescription: 'See structured prescriptions', // Legacy fallback
+          prescription: 'See structured prescriptions',
         });
 
         await notifySuccess(`Referral #${detailReferral.id} updated and prescriptions saved.`, 'Referral Completed');
-        await loadReferralDetail();
+        navigate('/doctor/referrals');
       } catch (err) {
         void notifyError(getErrorMessage(err, `Failed to complete referral #${detailReferral.id}.`), 'Update Failed');
       } finally {
@@ -316,20 +296,6 @@ export function DoctorReferralsPage() {
                   <MenuIcon className="nurse-side-icon" size={18} strokeWidth={2.2} />
                   <span className="nurse-side-label">{menuItem.label}</span>
                 </button>
-                {menuItem.key === 'inventory' && isInventoryOpen && (
-                  <div className="nurse-sidebar-submenu open" role="menu">
-                    {doctorInventorySubItems.map((subItem) => (
-                      <button
-                        key={subItem.key}
-                        className="nurse-search-option"
-                        onClick={() => onInventorySubItemClick(subItem.path)}
-                        type="button"
-                      >
-                        <span>{subItem.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
               </div>
             );
           })}
@@ -372,7 +338,7 @@ export function DoctorReferralsPage() {
             {loading ? (
               <p className="muted">Loading referrals...</p>
             ) : filteredReferrals.length === 0 ? (
-              <p className="empty-state">No referrals found for this filter.</p>
+              <p className="empty-state">No active referrals found for this filter.</p>
             ) : (
               <div className="table-wrap">
                 <table aria-label="Doctor referrals table" className="referral-list-table">
@@ -553,4 +519,3 @@ export function DoctorReferralsPage() {
     </div>
   );
 }
-

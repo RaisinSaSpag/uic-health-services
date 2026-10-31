@@ -67,6 +67,7 @@ class AuthController extends Controller
                         'campus_id' => $user->campus_id,
                         'campus' => $user->campus?->name,
                         'department' => $user->department?->name,
+                        'must_change_password' => (bool) $user->must_change_password,
                     ],
                 ]);
             }
@@ -105,7 +106,8 @@ class AuthController extends Controller
             ->whereRaw('LOWER(email) = ?', [Str::lower($credentials['email'])])
             ->first();
 
-        $allowedRoles = ['employee', 'nurse', 'doctor', 'admin', 'coordinator'];
+        // ADDED 'student' to allowed roles so they can log in via the form
+        $allowedRoles = ['employee', 'nurse', 'doctor', 'admin', 'coordinator', 'student'];
 
         if (
             ! $user
@@ -132,6 +134,7 @@ class AuthController extends Controller
                 'campus_id' => $user->campus_id,
                 'campus' => $user->campus?->name,
                 'department' => $user->department?->name,
+                'must_change_password' => (bool) $user->must_change_password, // <-- ADDED
             ],
         ]);
     }
@@ -149,6 +152,7 @@ class AuthController extends Controller
             'campus_id' => $user?->campus_id,
             'campus' => $user?->campus?->name,
             'department' => $user?->department?->name,
+            'must_change_password' => (bool) $user?->must_change_password, // <-- ADDED
         ]);
     }
 
@@ -157,8 +161,23 @@ class AuthController extends Controller
      */
     public function logout(Request $request): JsonResponse
     {
-        // Since JWTs are stateless, actual invalidation happens on the client.
-        // We just return a successful response so the client knows to clear the token.
         return response()->json(['message' => 'Successfully logged out.']);
+    }
+
+    /**
+     * Allow a student or employee to change their default password.
+     */
+    public function changePassword(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'new_password' => ['required', 'string', 'min:6', 'confirmed'],
+        ]);
+
+        $user = $request->user();
+        $user->password = Hash::make($validated['new_password']);
+        $user->must_change_password = false;
+        $user->save();
+
+        return response()->json(['message' => 'Password updated successfully.']);
     }
 }
