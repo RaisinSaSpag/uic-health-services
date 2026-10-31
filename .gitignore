@@ -71,3 +71,7 @@ test-full.txt
 
 admin-refs-*.csv
 *.phpcode
+
+backend/database.sqlite
+backend/composer.phar
+backend/composer-setup.php
