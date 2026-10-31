@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { notifyError, notifySuccess } from '../lib/alerts';
 import { useAuth } from '../context/AuthContext';
+import { getErrorMessage } from '../lib/http';
 
 export function NurseWalkInRegistrationPage() {
   const navigate = useNavigate();
@@ -39,7 +40,7 @@ export function NurseWalkInRegistrationPage() {
       notifySuccess('Walk-in patient registered successfully!');
       navigate(`/nurse/patients/${res.data.id}/new-consultation`);
     } catch (err) {
-      void notifyError('Failed to register walk-in patient.');
+      void notifyError(getErrorMessage(err, 'Failed to register walk-in patient.'), 'Registration Failed');
     } finally {
       setLoading(false);
     }

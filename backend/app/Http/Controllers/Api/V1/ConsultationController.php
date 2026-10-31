@@ -22,7 +22,7 @@ class ConsultationController extends Controller
     {
         $validated = $request->validate([
             'status' => ['nullable', 'string', 'max:40'],
-            'consultation_type' => ['nullable', 'in:walk_in,scheduled'],
+            'consultation_type' => ['nullable', 'in:walk_in,scheduled,injury'],
             'referred_to_doctor' => ['nullable', 'boolean'],
             'submitted_date' => ['nullable', 'date_format:Y-m-d'],
             'patient_id' => ['nullable', 'integer', 'min:1'],
@@ -48,7 +48,7 @@ class ConsultationController extends Controller
 
         $validated = $request->validate([
             'patient_id' => [$isStaff ? 'required' : 'nullable', 'integer', 'min:1'],
-            'consultation_type' => ['required', 'in:walk_in,scheduled'],
+            'consultation_type' => ['required', 'in:walk_in,scheduled,injury'],
             'consultation_date' => [$isStaff ? 'required' : 'nullable', 'date_format:Y-m-d'],
             'consultation_time' => [$isStaff ? 'required' : 'nullable', 'date_format:H:i'],
             'blood_pressure' => ['nullable', 'string', 'max:32'],

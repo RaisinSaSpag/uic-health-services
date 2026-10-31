@@ -315,13 +315,16 @@ class PatientController extends Controller
             'remarks' => ['nullable', 'string', 'max:2000'],
         ]);
 
+        // 🚨 BUG FIX: role must match patient_type (student vs employee)
+        $roleName = $validated['patient_type'] === 'employee' ? 'employee' : 'student';
+
         // Create the real User account using the student's UIC email
         $user = \App\Models\User::create([
             'first_name' => $validated['first_name'],
             'last_name' => $validated['last_name'],
             'email' => strtolower($validated['email']),
             'password' => \Illuminate\Support\Facades\Hash::make(strtolower($validated['email'])),
-            'role_id' => \App\Models\Role::where('name', 'student')->value('id'),
+            'role_id' => \App\Models\Role::where('name', $roleName)->value('id'),
             'campus_id' => $validated['campus_id'],
             'is_active' => true,
             'must_change_password' => true,
@@ -370,12 +373,16 @@ class PatientController extends Controller
             // Create new User + Patient
             $email = 'walkin.' . uniqid() . '@uic.edu.ph';
 
+            // 🚨 BUG FIX: role must match patient_category (employee vs student)
+            $isEmployee = $validated['patient_category'] === 'employee';
+            $roleName = $isEmployee ? 'employee' : 'student';
+
             $user = \App\Models\User::create([
                 'first_name' => $validated['first_name'],
                 'last_name' => $validated['last_name'],
                 'email' => $email,
                 'password' => \Illuminate\Support\Facades\Hash::make($email),
-                'role_id' => \App\Models\Role::where('name', 'student')->value('id'),
+                'role_id' => \App\Models\Role::where('name', $roleName)->value('id'),
                 'campus_id' => $validated['campus_id'],
                 'is_active' => true,
                 'must_change_password' => true,
@@ -386,7 +393,7 @@ class PatientController extends Controller
                 'user_id' => $user->id,
                 'campus_id' => $validated['campus_id'],
                 'patient_number' => $patientNumber,
-                'patient_type' => 'student',
+                'patient_type' => $isEmployee ? 'employee' : 'student',
                 'patient_category' => $validated['patient_category'],
                 'sex' => 'unknown',
                 'birth_date' => '2000-01-01',

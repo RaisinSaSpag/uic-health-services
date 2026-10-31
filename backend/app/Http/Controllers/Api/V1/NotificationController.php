@@ -15,29 +15,20 @@ class NotificationController extends Controller
      * Curated list of audit actions that produce user-visible notifications.
      */
     private const NOTIFIABLE_ACTIONS = [
-        // Branch requests
         'branch_request.created',
         'branch_request.approved',
         'branch_request.rejected',
         'branch_request.completed',
-
-        // Inventory
         'inventory.stocked_in',
         'inventory.dispensed',
         'inventory.archived',
         'inventory.restored',
         'inventory.archived_deleted',
-
-        // Medicine catalogue
         'medicine.created',
         'medicine.updated',
         'medicine.deleted',
-
-        // Users (admin events)
         'user.created',
         'user.deleted',
-
-        // Referrals & consultations
         'referral.created',
         'referral.in_progress',
         'referral.completed',
@@ -47,8 +38,6 @@ class NotificationController extends Controller
         'consultation.cancelled',
         'consultation.completed',
         'consultation.nurse_finalization',
-
-        // Prescriptions
         'prescription.created',
         'prescription.dispensed',
         'prescription.cancelled',
@@ -64,18 +53,14 @@ class NotificationController extends Controller
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
 
-        $me = $request->user();
-        $campusId = (int) ($validated['campus_id'] ?? $me->campus_id ?? 0);
+        $campusId = $this->resolveCampusId($request, $validated);
 
         if ($campusId <= 0) {
             return response()->json([]);
         }
 
-        // Users at this campus — notifications are scoped to their actions
-        $campusUserIds = User::query()
-            ->where('campus_id', $campusId)
-            ->pluck('id')
-            ->all();
+        $me = $request->user();
+        $campusUserIds = $this->campusUserIds($campusId);
 
         if (empty($campusUserIds)) {
             return response()->json([]);
@@ -89,7 +74,6 @@ class NotificationController extends Controller
             ->limit((int) ($validated['per_page'] ?? 20))
             ->get();
 
-        // Fetch read markers for this user
         $logIds = $logs->pluck('id')->all();
         $readIds = NotificationRead::query()
             ->where('user_id', $me->id)
@@ -98,10 +82,10 @@ class NotificationController extends Controller
             ->all();
         $readSet = array_flip($readIds);
 
-        $items = $logs->map(function (AuditLog $log) use ($me, $readSet) {
+        $items = $logs->map(function (AuditLog $log) use ($me, $readSet, $campusId) {
             return [
                 'id' => $log->id,
-                'branch_id' => (int) ($me->campus_id ?? 0),
+                'branch_id' => $campusId,
                 'reference_id' => $log->entity_id,
                 'type' => $log->action,
                 'message' => $this->humanMessage($log),
@@ -124,24 +108,19 @@ class NotificationController extends Controller
             'campus_id' => ['nullable', 'integer', 'min:1'],
         ]);
 
-        $me = $request->user();
-        $campusId = (int) ($validated['campus_id'] ?? $me->campus_id ?? 0);
+        $campusId = $this->resolveCampusId($request, $validated);
 
         if ($campusId <= 0) {
             return response()->json(['unread' => 0]);
         }
 
-        // Users at this campus
-        $campusUserIds = User::query()
-            ->where('campus_id', $campusId)
-            ->pluck('id')
-            ->all();
+        $me = $request->user();
+        $campusUserIds = $this->campusUserIds($campusId);
 
         if (empty($campusUserIds)) {
             return response()->json(['unread' => 0]);
         }
 
-        // 1. Get ALL notifiable logs for this campus
         $logIds = AuditLog::query()
             ->whereIn('user_id', $campusUserIds)
             ->whereIn('action', self::NOTIFIABLE_ACTIONS)
@@ -152,20 +131,18 @@ class NotificationController extends Controller
             return response()->json(['unread' => 0]);
         }
 
-        // 2. Count how many of THOSE specific logs this user has read
         $readCount = NotificationRead::query()
             ->where('user_id', $me->id)
             ->whereIn('log_id', $logIds)
             ->count();
 
-        // 3. The unread count is total logs minus read logs
         $unread = max(0, count($logIds) - $readCount);
 
         return response()->json(['unread' => $unread]);
     }
-    
+
     /**
-     * Mark all currently-visible notifications as read for the current user.
+     * Mark all currently-visible notifications as read.
      */
     public function markRead(Request $request): JsonResponse
     {
@@ -173,17 +150,14 @@ class NotificationController extends Controller
             'campus_id' => ['nullable', 'integer', 'min:1'],
         ]);
 
-        $me = $request->user();
-        $campusId = (int) ($validated['campus_id'] ?? $me->campus_id ?? 0);
+        $campusId = $this->resolveCampusId($request, $validated);
 
         if ($campusId <= 0) {
             return response()->json(['marked_read' => 0]);
         }
 
-        $campusUserIds = User::query()
-            ->where('campus_id', $campusId)
-            ->pluck('id')
-            ->all();
+        $me = $request->user();
+        $campusUserIds = $this->campusUserIds($campusId);
 
         if (empty($campusUserIds)) {
             return response()->json(['marked_read' => 0]);
@@ -215,7 +189,7 @@ class NotificationController extends Controller
             ];
         }
 
-        if (! empty($rows)) {
+        if (!empty($rows)) {
             NotificationRead::insert($rows);
         }
 
@@ -223,11 +197,19 @@ class NotificationController extends Controller
     }
 
     /**
-     * Mark a single notification read.
+     * Mark a single notification read (only if it belongs to the user's campus).
      */
     public function markOneRead(Request $request, AuditLog $auditLog): JsonResponse
     {
         $me = $request->user();
+        $roleName = strtolower((string) ($me->role?->name ?? ''));
+
+        // 🚨 SECURITY: nurse/doctor can only mark reads for their own campus
+        if ($roleName !== 'coordinator' && $auditLog->user) {
+            if ((int) $auditLog->user->campus_id !== (int) $me->campus_id) {
+                abort(403, 'You cannot mark notifications from another campus as read.');
+            }
+        }
 
         NotificationRead::firstOrCreate(
             ['user_id' => $me->id, 'log_id' => $auditLog->id],
@@ -235,6 +217,35 @@ class NotificationController extends Controller
         );
 
         return response()->json(['success' => true]);
+    }
+
+    /**
+     * 🚨 SECURITY: resolve the campus ID that should be used for a query.
+     * Nurses/Doctors are always locked to their own campus.
+     * Coordinators may request any campus (or none = their own).
+     */
+    private function resolveCampusId(Request $request, array $validated): int
+    {
+        $me = $request->user();
+        $roleName = strtolower((string) ($me->role?->name ?? ''));
+
+        if ($roleName === 'coordinator') {
+            return (int) ($validated['campus_id'] ?? $me->campus_id ?? 0);
+        }
+
+        // Nurses, Doctors: force own campus (ignore client input)
+        return (int) ($me->campus_id ?? 0);
+    }
+
+    /**
+     * Get all user IDs at a given campus.
+     */
+    private function campusUserIds(int $campusId): array
+    {
+        return User::query()
+            ->where('campus_id', $campusId)
+            ->pluck('id')
+            ->all();
     }
 
     /**
@@ -247,46 +258,32 @@ class NotificationController extends Controller
             : 'Someone';
 
         return match ($log->action) {
-            // Branch requests
             'branch_request.created' => "{$actor} created a branch request.",
             'branch_request.approved' => "{$actor} approved a branch request.",
             'branch_request.rejected' => "{$actor} rejected a branch request.",
             'branch_request.completed' => "{$actor} completed a branch request.",
-
-            // Inventory
             'inventory.stocked_in' => "{$actor} added stock to inventory.",
             'inventory.dispensed' => "{$actor} dispensed a medicine.",
             'inventory.archived' => "{$actor} archived inventory stock.",
             'inventory.restored' => "{$actor} restored archived stock.",
             'inventory.archived_deleted' => "{$actor} permanently deleted archived stock.",
-
-            // Medicines
             'medicine.created' => "{$actor} added a new medicine.",
             'medicine.updated' => "{$actor} updated a medicine.",
             'medicine.deleted' => "{$actor} deleted a medicine.",
-
-            // Users
             'user.created' => "{$actor} created a new user.",
             'user.deleted' => "{$actor} deleted a user.",
-
-            // Referrals
             'referral.created' => "{$actor} created a referral.",
             'referral.in_progress' => "{$actor} started a referral.",
             'referral.completed' => "{$actor} completed a referral.",
-
-            // Consultations
             'consultation.submitted' => "{$actor} submitted a consultation.",
             'consultation.started' => "{$actor} started a consultation.",
             'consultation.triaged' => "{$actor} triaged a consultation.",
             'consultation.cancelled' => "{$actor} cancelled a consultation.",
             'consultation.completed' => "{$actor} completed a consultation.",
             'consultation.nurse_finalization' => "{$actor} sent a consultation for finalization.",
-
-            // Prescriptions
             'prescription.created' => "{$actor} created a prescription.",
             'prescription.dispensed' => "{$actor} dispensed a prescription.",
             'prescription.cancelled' => "{$actor} cancelled a prescription.",
-
             default => "{$actor} performed: {$log->action}",
         };
     }

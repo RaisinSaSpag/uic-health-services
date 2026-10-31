@@ -103,19 +103,30 @@ Route::prefix('v1')->group(function (): void {
         });
 
         // ============================================================
-        // Inventory & Medicines (No Doctor, No Student)
+        // Medicines Catalog — READ (Nurses + Coordinators)
         // ============================================================
         Route::middleware('role:nurse,coordinator')->group(function (): void {
             Route::get('/medicines', [MedicineController::class, 'index']);
             Route::get('/medicines/stock-out', [MedicineController::class, 'stockOut']);
             Route::get('/medicines/{medicine}', [MedicineController::class, 'show']);
-            Route::get('/inventory/available', [InventoryController::class, 'available']);
-            Route::get('/inventory/low-stock', [InventoryController::class, 'lowStock']);
-            Route::get('/inventory/expiring-soon', [InventoryController::class, 'expiringSoon']);
+        });
 
+        // ============================================================
+        // Medicines Catalog — WRITE (Coordinators only — audit #16)
+        // ============================================================
+        Route::middleware('role:coordinator')->group(function (): void {
             Route::post('/medicines', [MedicineController::class, 'store']);
             Route::patch('/medicines/{medicine}', [MedicineController::class, 'update']);
             Route::delete('/medicines/{medicine}', [MedicineController::class, 'destroy']);
+        });
+
+        // ============================================================
+        // Inventory Management (Nurses + Coordinators — campus enforced in controller)
+        // ============================================================
+        Route::middleware('role:nurse,coordinator')->group(function (): void {
+            Route::get('/inventory/available', [InventoryController::class, 'available']);
+            Route::get('/inventory/low-stock', [InventoryController::class, 'lowStock']);
+            Route::get('/inventory/expiring-soon', [InventoryController::class, 'expiringSoon']);
 
             Route::post('/inventory/stock-in', [InventoryController::class, 'stockIn']);
             Route::post('/inventory/dispense', [InventoryController::class, 'dispense']);
