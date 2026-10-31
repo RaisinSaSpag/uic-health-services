@@ -219,6 +219,8 @@ class Phase4WorkflowTest extends TestCase
             ->patchJson("/api/v1/referrals/{$referral->id}", [
                 'action' => 'complete',
                 'doctor_remarks' => 'No severe findings; continue monitoring.',
+                'final_diagnosis' => 'Viral Infection',
+                'treatment_plan' => 'Rest and hydration',
                 'prescription' => 'Paracetamol 500mg as needed',
             ]);
 

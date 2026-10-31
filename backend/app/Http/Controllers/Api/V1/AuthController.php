@@ -96,6 +96,9 @@ class AuthController extends Controller
 
     public function logout(Request $request): JsonResponse
     {
+        // 🚨 SECURITY: Revoke all previously issued tokens
+        $request->user()->update(['tokens_valid_after' => now()]);
+
         return response()->json(['message' => 'Successfully logged out.']);
     }
 
@@ -124,6 +127,8 @@ class AuthController extends Controller
 
         $user->password = Hash::make($validated['new_password']);
         $user->must_change_password = false;
+        // 🚨 SECURITY: Revoke tokens issued before the password change
+        $user->tokens_valid_after = now();
         $user->save();
 
         return response()->json(['message' => 'Password updated successfully.']);

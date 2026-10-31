@@ -42,6 +42,14 @@ class JwtAuthMiddleware
             return response()->json(['message' => 'User not found or inactive.'], 401);
         }
 
+        // 🚨 SECURITY: Check if the token was issued before the last logout/password change
+        if ($user->tokens_valid_after && isset($payload['iat'])) {
+            // If token was issued before the revocation timestamp, reject it
+            if ($payload['iat'] < $user->tokens_valid_after->getTimestamp()) {
+                return response()->json(['message' => 'Session expired. Please log in again.'], 401);
+            }
+        }
+
         $request->setUserResolver(fn (): User => $user);
 
         return $next($request);

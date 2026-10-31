@@ -76,12 +76,16 @@ class ReferralController extends Controller
             'action' => ['required', 'in:in_progress,complete'],
             'doctor_remarks' => ['nullable', 'string', 'max:3000'],
             'prescription' => ['nullable', 'string', 'max:3000'],
+            'final_diagnosis' => ['nullable', 'string', 'max:3000'],
+            'treatment_plan' => ['nullable', 'string', 'max:3000'],
         ]);
 
         if ($validated['action'] === 'complete') {
             $request->validate([
                 'doctor_remarks' => ['required', 'string', 'max:3000'],
                 'prescription' => ['required', 'string', 'max:3000'],
+                'final_diagnosis' => ['required', 'string', 'max:3000'],
+                'treatment_plan' => ['required', 'string', 'max:3000'],
             ]);
         }
 

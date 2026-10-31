@@ -33,6 +33,7 @@ class User extends Authenticatable
         'is_active',
         'last_login_at',
         'must_change_password',
+        'tokens_valid_after',
     ];
 
     /**
@@ -55,6 +56,8 @@ class User extends Authenticatable
         return [
             'is_active' => 'boolean',
             'last_login_at' => 'datetime',
+            'must_change_password' => 'boolean',
+            'tokens_valid_after' => 'datetime',
         ];
     }
 

@@ -180,11 +180,28 @@ class ReferralService
             $referral->update([
                 'status' => 'completed',
                 'doctor_remarks' => (string) $payload['doctor_remarks'],
-                'prescription' => (string) $payload['prescription'],
+                'prescription' => (string) ($payload['prescription'] ?? ''),
                 'completed_at' => now(),
             ]);
 
-            $referral->consultation->update([
+            // 🚨 FIX T07: Save Final Diagnosis and Treatment Plan to MedicalRecord
+            $consultation = $referral->consultation;
+            
+            $consultation->medicalRecord()->updateOrCreate(
+                ['consultation_id' => $consultation->id],
+                [
+                    'patient_id' => $consultation->patient_id,
+                    'nurse_id' => $consultation->nurse_id,
+                    'doctor_id' => $actor->id,
+                    'summary' => $payload['doctor_remarks'] ?? '',
+                    'final_diagnosis' => $payload['final_diagnosis'] ?? 'N/A',
+                    'treatment_plan' => $payload['treatment_plan'] ?? 'N/A',
+                    'prescription' => $payload['prescription'] ?? null,
+                    'finalized_at' => now(),
+                ]
+            );
+
+            $consultation->update([
                 'status' => 'nurse_finalization',
             ]);
 

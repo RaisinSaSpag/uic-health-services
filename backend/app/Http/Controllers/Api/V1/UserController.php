@@ -107,6 +107,16 @@ class UserController extends Controller
             ], 409);
         }
 
+        // SECURITY: Prevent demoting the last active coordinator
+        if ($user->role?->name === 'coordinator' && $targetRoleName !== 'coordinator') {
+            $activeCoordinatorCount = User::whereHas('role', fn ($q) => $q->where('name', 'coordinator'))
+                ->where('is_active', true)
+                ->count();
+            if ($activeCoordinatorCount <= 1) {
+                return response()->json(['message' => 'Cannot demote the last active coordinator.'], 409);
+            }
+        }
+
         $oldRoleName = $user->role?->name;
 
         if ((int) $user->role_id !== (int) $targetRole->id) {
@@ -139,6 +149,24 @@ class UserController extends Controller
         $actor = $request->user();
         $updates = [];
         $oldValues = [];
+
+        // SECURITY: Prevent deactivating or demoting the last active coordinator
+        if ($user->role?->name === 'coordinator') {
+            $isDeactivating = array_key_exists('is_active', $validated) && !$validated['is_active'];
+            $isDemoting = array_key_exists('role_name', $validated) && strtolower($validated['role_name']) !== 'coordinator';
+
+            if ($isDeactivating || $isDemoting) {
+                $activeCoordinatorCount = User::whereHas('role', function ($query) {
+                    $query->where('name', 'coordinator');
+                })->where('is_active', true)->count();
+
+                if ($activeCoordinatorCount <= 1) {
+                    return response()->json([
+                        'message' => 'Cannot deactivate or demote the last active coordinator.',
+                    ], 409);
+                }
+            }
+        }
 
         if (array_key_exists('first_name', $validated)) {
             $updates['first_name'] = trim((string) $validated['first_name']);

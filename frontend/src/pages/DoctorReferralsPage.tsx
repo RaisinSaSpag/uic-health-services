@@ -68,8 +68,12 @@ export function DoctorReferralsPage() {
 
   const [detailReferral, setDetailReferral] = useState<Referral | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  
+  // Form State
+  const [finalDiagnosis, setFinalDiagnosis] = useState('');
+  const [treatmentPlan, setTreatmentPlan] = useState('');
   const [doctorRemarks, setDoctorRemarks] = useState('');
-  const [prescriptionText, setPrescriptionText] = useState(''); // 🚨 #14: free-text prescription
+  const [prescriptionText, setPrescriptionText] = useState('');
   const [saving, setSaving] = useState(false);
 
   const routeReferralId = useMemo(() => parseReferralId(rawReferralId), [rawReferralId]);
@@ -102,6 +106,10 @@ export function DoctorReferralsPage() {
     try {
       const response = await api.get<Referral>(`/referrals/${routeReferralId}`);
       setDetailReferral(response.data);
+      
+      // Load existing data if it exists
+      setFinalDiagnosis(response.data.final_diagnosis ?? '');
+      setTreatmentPlan(response.data.treatment_plan ?? '');
       setDoctorRemarks(response.data.doctor_remarks ?? '');
       setPrescriptionText(response.data.prescription ?? '');
     } catch (err) {
@@ -148,6 +156,14 @@ export function DoctorReferralsPage() {
     if (!detailReferral) return;
 
     if (action === 'complete') {
+      if (finalDiagnosis.trim() === '') {
+        void notifyError('Final Diagnosis is required to complete this referral.', 'Missing Details');
+        return;
+      }
+      if (treatmentPlan.trim() === '') {
+        void notifyError('Treatment Plan is required to complete this referral.', 'Missing Details');
+        return;
+      }
       if (doctorRemarks.trim() === '') {
         void notifyError('Doctor remarks are required to complete this referral.', 'Missing Details');
         return;
@@ -164,6 +180,8 @@ export function DoctorReferralsPage() {
       try {
         await api.patch(`/referrals/${detailReferral.id}`, {
           action: 'complete',
+          final_diagnosis: finalDiagnosis.trim(),
+          treatment_plan: treatmentPlan.trim(),
           doctor_remarks: doctorRemarks.trim(),
           prescription: prescriptionText.trim() || null,
         });
@@ -363,10 +381,33 @@ export function DoctorReferralsPage() {
 
                   <article className="doctor-referral-panel">
                     <h3>Doctor Assessment</h3>
+                    
                     <label className="field full-width">
+                      <span>Final Diagnosis *</span>
+                      <textarea
+                        rows={2}
+                        value={finalDiagnosis}
+                        onChange={(e) => setFinalDiagnosis(e.target.value)}
+                        placeholder="Enter final diagnosis (e.g., Upper Respiratory Tract Infection)"
+                        disabled={isCompleted || saving}
+                      />
+                    </label>
+
+                    <label className="field full-width" style={{ marginTop: '1rem' }}>
+                      <span>Treatment Plan *</span>
+                      <textarea
+                        rows={2}
+                        value={treatmentPlan}
+                        onChange={(e) => setTreatmentPlan(e.target.value)}
+                        placeholder="Enter treatment plan (e.g., Rest and hydration, follow up in 3 days)"
+                        disabled={isCompleted || saving}
+                      />
+                    </label>
+
+                    <label className="field full-width" style={{ marginTop: '1rem' }}>
                       <span>Doctor Remarks *</span>
                       <textarea
-                        rows={4}
+                        rows={3}
                         value={doctorRemarks}
                         onChange={(e) => setDoctorRemarks(e.target.value)}
                         placeholder="Enter your clinical assessment, findings, and recommendations"
@@ -374,7 +415,6 @@ export function DoctorReferralsPage() {
                       />
                     </label>
 
-                    {/* 🚨 #14: Free-text prescription (no dropdown — doctors type naturally) */}
                     <label className="field full-width" style={{ marginTop: '1rem' }}>
                       <span>Prescription (Optional)</span>
                       <textarea

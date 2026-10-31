@@ -66,6 +66,8 @@ export function NurseInventoryStocksPage() {
   const navigate = useNavigate();
   const { basePath, isDoctor } = useInventoryBasePath();
 
+  const isCoordinator = user?.role === 'coordinator';
+
   const resolvedMenuItems = useMemo(
     () =>
       menuItems.map((item) => ({
@@ -458,7 +460,8 @@ export function NurseInventoryStocksPage() {
             <p className="muted">Manage and monitor active drug stock levels for {campusName}</p>
           </div>
           <div className="flex gap-2">
-            {!isDoctor && (
+            {/* T14 FIX: Only Coordinators (or explicitly allowed roles) can Add/Delete the master catalog */}
+            {!isDoctor && isCoordinator && (
               <>
                 <button className="button secondary" onClick={() => setArchivedOpen(true)} type="button">
                   <Archive size={16} />
@@ -469,6 +472,14 @@ export function NurseInventoryStocksPage() {
                   <span>Add New Drug</span>
                 </button>
               </>
+            )}
+            
+            {/* Nurses still need access to the Archived List */}
+            {!isDoctor && !isCoordinator && (
+              <button className="button secondary" onClick={() => setArchivedOpen(true)} type="button">
+                <Archive size={16} />
+                <span>Archived List</span>
+              </button>
             )}
           </div>
         </header>
@@ -554,22 +565,28 @@ export function NurseInventoryStocksPage() {
                               >
                                 <Archive size={16} className={totalStock === 0 ? 'text-gray-300' : 'text-amber-600'} />
                               </button>
-                              <button
-                                className="button ghost sm"
-                                onClick={() => openEditModal(medicine)}
-                                title="Edit Catalog Info"
-                                type="button"
-                              >
-                                <Edit3 size={16} />
-                              </button>
-                              <button
-                                className="button ghost sm"
-                                onClick={() => void handleDelete(medicine)}
-                                title="Delete Catalog Definition"
-                                type="button"
-                              >
-                                <Trash2 size={16} className="text-red-500" />
-                              </button>
+                              
+                              {/* T14 FIX: Only Coordinators can Edit or Delete the master catalog */}
+                              {isCoordinator && (
+                                <>
+                                  <button
+                                    className="button ghost sm"
+                                    onClick={() => openEditModal(medicine)}
+                                    title="Edit Catalog Info"
+                                    type="button"
+                                  >
+                                    <Edit3 size={16} />
+                                  </button>
+                                  <button
+                                    className="button ghost sm"
+                                    onClick={() => void handleDelete(medicine)}
+                                    title="Delete Catalog Definition"
+                                    type="button"
+                                  >
+                                    <Trash2 size={16} className="text-red-500" />
+                                  </button>
+                                </>
+                              )}
                             </div>
                           </td>
                         )}
