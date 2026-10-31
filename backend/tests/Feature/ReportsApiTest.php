@@ -110,13 +110,14 @@ class ReportsApiTest extends TestCase
         $this->assertCount(0, $response->json());
     }
 
-    public function test_doctor_can_read_reports(): void
+    public function test_doctor_has_no_report_access(): void
     {
         $campus = Campus::first();
         $doctor = User::factory()->withRole('doctor')->create(['campus_id' => $campus->id]);
 
+        // Per spec: Doctor has NO inventory access (including reports)
         $this->asUser($doctor)
             ->getJson('/api/v1/medicines/stock-out?campus_id=' . $campus->id)
-            ->assertOk();
+            ->assertForbidden();
     }
 }

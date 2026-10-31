@@ -94,11 +94,14 @@ class MedicineApiTest extends TestCase
         $response->assertForbidden();
     }
 
-    public function test_doctor_can_view_medicines_but_not_create(): void
+    public function test_doctor_has_no_inventory_access(): void
     {
         $doctor = $this->createUserWithRole('doctor');
         Medicine::factory()->create();
-        $this->asUser($doctor)->getJson('/api/v1/medicines')->assertOk();
+
+        // Per spec: Doctor has NO inventory access
+        $this->asUser($doctor)->getJson('/api/v1/medicines')->assertForbidden();
+
         $this->asUser($doctor)->postJson('/api/v1/medicines', [
             'name' => 'Test',
             'category' => 'Test',
