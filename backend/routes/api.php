@@ -22,10 +22,10 @@ Route::prefix('v1')->group(function (): void {
 
     Route::prefix('auth')->group(function (): void {
         // Staff login (Nurse, Doctor, Coordinator)
-        Route::post('/staff/login', [AuthController::class, 'staffLogin'])->middleware('throttle:20,1');
+        Route::post('/staff/login', [AuthController::class, 'staffLogin'])->middleware('throttle:100,1');
 
         // Student/Employee login
-        Route::post('/student/login', [AuthController::class, 'studentLogin'])->middleware('throttle:20,1');
+        Route::post('/student/login', [AuthController::class, 'studentLogin'])->middleware('throttle:100,1');
 
         Route::middleware(['jwt', 'throttle:60,1'])->group(function (): void {
             Route::get('/me', [AuthController::class, 'me']);
