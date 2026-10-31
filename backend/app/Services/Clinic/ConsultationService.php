@@ -25,7 +25,7 @@ class ConsultationService
     {
         $role = strtolower((string) $user->role?->name);
 
-        if (! in_array($role, ['student', 'employee', 'nurse', 'admin'], true)) {
+        if (! in_array($role, ['student', 'employee', 'nurse', 'coordinator'], true)) {
             throw new RuntimeException('You are not allowed to submit consultations.');
         }
 
@@ -40,7 +40,7 @@ class ConsultationService
 
         $referredToDoctor = (bool) ($payload['referred_to_doctor'] ?? false);
 
-        $isStaff = in_array($role, ['nurse', 'admin'], true);
+        $isStaff = in_array($role, ['nurse', 'coordinator'], true);
 
         $status = match (true) {
             $referredToDoctor => 'referred_to_doctor',
@@ -52,7 +52,7 @@ class ConsultationService
 
         $consultation = Consultation::create([
             'patient_id' => $patient->id,
-            'nurse_id' => in_array($role, ['nurse', 'admin'], true) ? $user->id : null,
+            'nurse_id' => in_array($role, ['nurse', 'coordinator'], true) ? $user->id : null,
             'consultation_type' => $consultationType,
             'status' => $status,
             'chief_complaint' => (string) $payload['chief_complaint'],
@@ -147,8 +147,8 @@ class ConsultationService
     {
         $role = strtolower((string) $actor->role?->name);
 
-        if (! in_array($role, ['nurse', 'admin'], true)) {
-            throw new RuntimeException('Only nurse or admin users can update consultation workflow.');
+        if (! in_array($role, ['nurse', 'coordinator'], true)) {
+            throw new RuntimeException('Only nurse or coordinator users can update consultation workflow.');
         }
 
         $action = (string) $payload['action'];
@@ -213,7 +213,7 @@ class ConsultationService
     {
         $role = strtolower((string) $user->role?->name);
 
-        if (in_array($role, ['admin', 'nurse'], true)) {
+        if (in_array($role, ['coordinator', 'nurse'], true)) {
             return true;
         }
 

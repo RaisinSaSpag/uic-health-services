@@ -68,3 +68,6 @@ Thumbs.db
 system-scan.txt
 test-full.txt
 *.bak
+
+admin-refs-*.csv
+*.phpcode

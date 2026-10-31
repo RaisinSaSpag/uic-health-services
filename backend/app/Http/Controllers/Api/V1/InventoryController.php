@@ -157,24 +157,24 @@ class InventoryController extends Controller
 
     /**
      * Ensure the authenticated user has permission to modify stock for the given campus.
-     * Nurses/Coordinators are restricted to their own campus. Admins can manage any campus.
+     * Nurses are restricted to their own campus. Coordinators have global access.
      */
     private function authorizeCampus(Request $request, int $campusId): void
     {
         $user = $request->user();
-        
+
         if (!$user) {
             abort(401, 'Unauthenticated.');
         }
 
         $roleName = strtolower((string) ($user->role?->name ?? ''));
 
-        // Admins have global access
-        if ($roleName === 'admin') {
+        // Coordinators have global access (per spec: Global Inventory Management)
+        if ($roleName === 'coordinator') {
             return;
         }
 
-        // Nurses and Coordinators can only modify their own campus
+        // Nurses can only modify their own campus
         if ((int) $user->campus_id !== (int) $campusId) {
             abort(403, 'You do not have permission to modify inventory for this campus.');
         }

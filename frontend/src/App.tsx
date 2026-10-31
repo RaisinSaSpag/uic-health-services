@@ -2,7 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { AppShell } from './components/AppShell';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { RoleRoute } from './components/RoleRoute';
-import { AdminAuditPage } from './pages/AdminAuditPage';
+import { CoordinatorAuditPage } from './pages/CoordinatorAuditPage';
 import { ChatPage } from './pages/ChatPage';
 import { AuthCallbackPage } from './pages/AuthCallbackPage';
 import { DoctorAboutPage } from './pages/DoctorAboutPage';
@@ -29,17 +29,17 @@ import { NurseInventoryReportsPage } from './pages/NurseInventoryReportsPage';
 import { NurseWalkInRegistrationPage } from './pages/NurseWalkInRegistrationPage';
 import { CoordinatorDashboardPage } from './pages/CoordinatorDashboardPage';
 import { ForcePasswordChangePage } from './pages/ForcePasswordChangePage';
-import { PatientPortalPage } from './pages/PatientPortalPage'; // <-- ADDED
+import { PatientPortalPage } from './pages/PatientPortalPage';
 import { useAuth } from './context/AuthContext';
 
 // Guard component that must return an <Outlet /> to render child routes
 function MustChangePasswordGuard() {
   const { user } = useAuth();
-  
+
   if (user?.must_change_password) {
     return <ForcePasswordChangePage />;
   }
-  
+
   return <AppShell />;
 }
 
@@ -51,10 +51,10 @@ function App() {
 
       {/* Protected Routes */}
       <Route element={<ProtectedRoute />}>
-        
+
         {/* Guard wraps the AppShell */}
         <Route element={<MustChangePasswordGuard />}>
-          
+
           <Route index element={<RoleLandingPage />} />
 
           {/* ============ PATIENT PORTAL ============ */}
@@ -73,7 +73,7 @@ function App() {
           <Route path="nurse/patients/:patientId" element={<RoleRoute roles={['nurse']}><NursePatientDetailPage /></RoleRoute>} />
           <Route path="nurse/patients/:patientId/new-consultation" element={<RoleRoute roles={['nurse']}><NurseConsultationTypePage /></RoleRoute>} />
           <Route path="nurse/patients/:patientId/new-consultation/:consultationType" element={<RoleRoute roles={['nurse']}><NurseConsultationFormPage /></RoleRoute>} />
-          
+
           <Route path="nurse/walk-in" element={<RoleRoute roles={['nurse']}><NurseWalkInRegistrationPage /></RoleRoute>} />
 
           <Route path="nurse/inventory" element={<RoleRoute roles={['nurse']}><NurseInventoryDashboardPage /></RoleRoute>} />
@@ -82,7 +82,7 @@ function App() {
           <Route path="nurse/inventory/history" element={<RoleRoute roles={['nurse']}><NurseInventoryHistoryPage /></RoleRoute>} />
           <Route path="nurse/inventory/about" element={<RoleRoute roles={['nurse']}><NurseInventoryAboutPage /></RoleRoute>} />
           <Route path="nurse/inventory/reports" element={<RoleRoute roles={['nurse']}><NurseInventoryReportsPage /></RoleRoute>} />
-          
+
           <Route path="nurse/referrals" element={<RoleRoute roles={['nurse']}><NurseReferralsPage /></RoleRoute>} />
           <Route path="nurse/referrals/:referralId" element={<RoleRoute roles={['nurse']}><NurseReferralsPage /></RoleRoute>} />
           <Route path="nurse/chat" element={<RoleRoute roles={['nurse']}><ChatPage /></RoleRoute>} />
@@ -98,7 +98,7 @@ function App() {
 
           {/* ============ COORDINATOR MODULE ============ */}
           <Route path="coordinator" element={<RoleRoute roles={['coordinator']}><CoordinatorDashboardPage /></RoleRoute>} />
-          <Route path="coordinator/audit-logs" element={<RoleRoute roles={['coordinator']}><AdminAuditPage /></RoleRoute>} />
+          <Route path="coordinator/audit-logs" element={<RoleRoute roles={['coordinator']}><CoordinatorAuditPage /></RoleRoute>} />
           <Route path="coordinator/chat" element={<RoleRoute roles={['coordinator']}><ChatPage /></RoleRoute>} />
           <Route path="coordinator/notifications" element={<RoleRoute roles={['coordinator']}><NotificationPage /></RoleRoute>} />
 

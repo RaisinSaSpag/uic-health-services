@@ -269,12 +269,12 @@ class Phase4WorkflowTest extends TestCase
         ]);
     }
 
-    public function test_admin_can_filter_audit_logs_for_consultation_actions(): void
+    public function test_coordinator_can_filter_audit_logs_for_consultation_actions(): void
     {
         $student = $this->createUserWithRole('student');
         $this->createPatientProfile($student, 'student');
         $nurse = $this->createUserWithRole('nurse');
-        $admin = $this->createUserWithRole('admin');
+        $coordinator = $this->createUserWithRole('coordinator');
 
         $createResponse = $this->asUser($student)->postJson('/api/v1/consultations', [
             'consultation_type' => 'walk_in',
@@ -291,7 +291,7 @@ class Phase4WorkflowTest extends TestCase
             ])
             ->assertOk();
 
-        $response = $this->asUser($admin)
+        $response = $this->asUser($coordinator)
             ->getJson("/api/v1/audit-logs?entity_type=consultation&entity_id={$consultationId}");
 
         $response->assertOk();
@@ -316,6 +316,7 @@ class Phase4WorkflowTest extends TestCase
             'patient_type' => $patientType,
         ]);
     }
+
     public function test_nurse_can_create_consultation(): void
     {
         $nurse = $this->createUserWithRole('nurse');
@@ -361,7 +362,8 @@ class Phase4WorkflowTest extends TestCase
             'status' => 'nurse_assessment',
         ]);
     }
-        public function test_coordinator_has_nurse_equivalent_access(): void
+
+    public function test_coordinator_has_nurse_equivalent_access(): void
     {
         $coordinator = $this->createUserWithRole('coordinator');
         $campus = \App\Models\Campus::query()->first();
@@ -376,14 +378,26 @@ class Phase4WorkflowTest extends TestCase
             ->getJson('/api/v1/inventory/available?campus_id=' . $campus->id)
             ->assertOk();
 
-        // Coordinator should be able to access chat
+        // Coordinator should be able to access the global group chat
         $this->asUser($coordinator)
-            ->getJson('/api/v1/messages/contacts')
+            ->getJson('/api/v1/messages/group')
             ->assertOk();
 
-        // Coordinator should NOT be able to create users (admin only)
-        $this->asUser($coordinator)
-            ->postJson('/api/v1/users', [])
-            ->assertForbidden();
+        // Coordinator CAN create users (absorbed admin power per spec)
+        $createdUserResponse = $this->asUser($coordinator)
+            ->postJson('/api/v1/users', [
+                'first_name' => 'Created',
+                'last_name' => 'By Coordinator',
+                'email' => 'created.by.coordinator@uic.edu.ph',
+                'password' => 'test-password',
+                'role_name' => 'nurse',
+                'campus_id' => $campus->id,
+            ]);
+
+        $createdUserResponse->assertCreated();
+
+        $this->assertDatabaseHas('users', [
+            'email' => 'created.by.coordinator@uic.edu.ph',
+        ]);
     }
 }

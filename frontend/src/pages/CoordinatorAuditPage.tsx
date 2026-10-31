@@ -12,7 +12,7 @@ interface AuditFilterState {
   date_to: string;
 }
 
-const assignableRoles: RoleName[] = ['student', 'employee', 'nurse', 'doctor', 'admin', 'coordinator'];
+const assignableRoles: RoleName[] = ['student', 'employee', 'nurse', 'doctor', 'coordinator'];
 
 function roleNameLabel(value: string): string {
   if (value.includes('_')) {
@@ -34,7 +34,7 @@ function userRoleName(user: UserRecord): string {
   return 'unknown';
 }
 
-export function AdminAuditPage() {
+export function CoordinatorAuditPage() {
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [page, setPage] = useState(1);
   const [lastPage, setLastPage] = useState(1);
@@ -294,7 +294,6 @@ export function AdminAuditPage() {
     }
   };
 
-  // ✅ Moved OUT of deleteSelectedUser — top-level component handler
   const handleResetPassword = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     if (!resetPasswordUserId) return;
@@ -315,7 +314,7 @@ export function AdminAuditPage() {
   };
 
   return (
-    <div className="page admin-audit-page">
+    <div className="page coordinator-audit-page">
       <section className="panel">
         <h2>User Role Assignment</h2>
         <p className="muted">Search users and assign access roles.</p>
@@ -413,7 +412,7 @@ export function AdminAuditPage() {
       </section>
 
       <section className="panel">
-        <h2>Admin Audit Logs</h2>
+        <h2>Coordinator Audit Logs</h2>
         <p className="muted">Filter and inspect critical workflow activity.</p>
 
         <form className="form-grid" onSubmit={applyFilters}>
@@ -784,7 +783,6 @@ export function AdminAuditPage() {
         </div>
       )}
 
-      {/* ✅ Reset Password modal — rendered inside the component's JSX tree */}
       {resetPasswordUserId !== null && (
         <div
           style={{

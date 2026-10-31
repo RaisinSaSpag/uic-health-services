@@ -22,17 +22,22 @@ const navItems: NavItem[] = [
   {
     to: '/nurse',
     label: 'Nurse Dashboard',
-    roles: ['nurse', 'admin'],
+    roles: ['nurse'],
   },
   {
     to: '/doctor',
     label: 'Doctor Referrals',
-    roles: ['doctor', 'admin'],
+    roles: ['doctor'],
   },
   {
-    to: '/admin',
+    to: '/coordinator',
+    label: 'Coordinator Dashboard',
+    roles: ['coordinator'],
+  },
+  {
+    to: '/coordinator/audit-logs',
     label: 'Audit Logs',
-    roles: ['admin'],
+    roles: ['coordinator'],
   },
 ];
 
@@ -171,7 +176,7 @@ export function AppShell() {
     .filter((item) => hasRole(item.roles))
     .filter((item) => !(hideNurseDashboardNavItem && item.to === '/nurse'));
   const isWideLayoutRoute = location.pathname.startsWith('/nurse') || location.pathname.startsWith('/doctor');
-  const isWorkspaceLayoutRoute = location.pathname.startsWith('/patient') || location.pathname.startsWith('/admin');
+  const isWorkspaceLayoutRoute = location.pathname.startsWith('/patient') || location.pathname.startsWith('/coordinator');
   const layoutMainClassName = `layout-main${isWideLayoutRoute ? ' layout-main-wide' : ''}${isWorkspaceLayoutRoute ? ' layout-main-workspace' : ''}`;
 
   return (
@@ -234,3 +239,4 @@ export function AppShell() {
     </div>
   );
 }
+

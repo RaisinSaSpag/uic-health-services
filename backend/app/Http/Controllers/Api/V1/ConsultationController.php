@@ -44,7 +44,7 @@ class ConsultationController extends Controller
     public function store(Request $request): JsonResponse
     {
         $actorRole = strtolower((string) $request->user()?->role?->name);
-        $isStaff = in_array($actorRole, ['nurse', 'admin'], true);
+        $isStaff = in_array($actorRole, ['nurse', 'coordinator'], true);
 
         $validated = $request->validate([
             'patient_id' => [$isStaff ? 'required' : 'nullable', 'integer', 'min:1'],

@@ -14,7 +14,6 @@ class RoleSeeder extends Seeder
             'employee' => 'Employee role',
             'nurse' => 'Nurse role',
             'doctor' => 'Doctor role',
-            'admin' => 'Admin role',
             'coordinator' => 'HSO Coordinator role',
         ];
 

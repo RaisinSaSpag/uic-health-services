@@ -21,8 +21,8 @@ class ReferralService
     {
         $actorRole = strtolower((string) $actor->role?->name);
 
-        if (! in_array($actorRole, ['nurse', 'admin'], true)) {
-            throw new RuntimeException('Only nurse or admin users can create referrals.');
+        if (! in_array($actorRole, ['nurse', 'coordinator'], true)) {
+            throw new RuntimeException('Only nurse or coordinator users can create referrals.');
         }
 
         $consultation = Consultation::query()
@@ -124,8 +124,8 @@ class ReferralService
 
         $role = strtolower((string) $actor->role?->name);
 
-        if (! in_array($role, ['doctor', 'admin'], true)) {
-            throw new RuntimeException('Only doctor or admin users can update referrals.');
+        if (! in_array($role, ['doctor', 'coordinator'], true)) {
+            throw new RuntimeException('Only doctor or coordinator users can update referrals.');
         }
 
         if ($role === 'doctor' && (int) $referral->doctor_id !== (int) $actor->id) {
@@ -209,3 +209,4 @@ class ReferralService
         throw new RuntimeException('Unsupported referral action.');
     }
 }
+

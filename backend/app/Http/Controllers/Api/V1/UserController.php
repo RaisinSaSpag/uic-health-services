@@ -23,7 +23,7 @@ class UserController extends Controller
     {
         $validated = $request->validate([
             'search' => ['nullable', 'string', 'max:120'],
-            'role' => ['nullable', 'string', Rule::in(['student', 'employee', 'nurse', 'doctor', 'admin'])],
+            'role' => ['nullable', 'string', Rule::in(['student', 'employee', 'nurse', 'doctor', 'coordinator'])],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
 
@@ -90,7 +90,7 @@ class UserController extends Controller
     public function updateRole(Request $request, User $user): JsonResponse
     {
         $validated = $request->validate([
-            'role_name' => ['required', 'string', Rule::in(['student', 'employee', 'nurse', 'doctor', 'admin', 'coordinator'])],
+            'role_name' => ['required', 'string', Rule::in(['student', 'employee', 'nurse', 'doctor', 'coordinator'])],
         ]);
 
         $targetRoleName = Str::lower((string) $validated['role_name']);
@@ -101,9 +101,9 @@ class UserController extends Controller
             return response()->json(['message' => 'Target role is not configured.'], 409);
         }
 
-        if ($actor && (int) $actor->id === (int) $user->id && $targetRoleName !== 'admin') {
+        if ($actor && (int) $actor->id === (int) $user->id && $targetRoleName !== 'coordinator') {
             return response()->json([
-                'message' => 'You cannot change your own role away from admin.',
+                'message' => 'You cannot change your own role away from coordinator.',
             ], 409);
         }
 
@@ -132,7 +132,7 @@ class UserController extends Controller
             'last_name'  => ['sometimes', 'required', 'string', 'max:80'],
             'email'      => ['sometimes', 'required', 'email', 'max:150', Rule::unique('users', 'email')->ignore($user->id)],
             'campus_id'  => ['sometimes', 'required', 'integer', 'exists:campuses,id'],
-            'role_name'  => ['sometimes', 'required', 'string', Rule::in(['student', 'employee', 'nurse', 'doctor', 'admin', 'coordinator'])],
+            'role_name'  => ['sometimes', 'required', 'string', Rule::in(['student', 'employee', 'nurse', 'doctor', 'coordinator'])],
             'is_active'  => ['sometimes', 'boolean'],
         ]);
 
@@ -185,9 +185,9 @@ class UserController extends Controller
                 return response()->json(['message' => 'Target role is not configured.'], 409);
             }
 
-            if ($actor && (int) $actor->id === (int) $user->id && $roleName !== 'admin') {
+            if ($actor && (int) $actor->id === (int) $user->id && $roleName !== 'coordinator') {
                 return response()->json([
-                    'message' => 'You cannot change your own role away from admin.',
+                    'message' => 'You cannot change your own role away from coordinator.',
                 ], 409);
             }
 
@@ -237,7 +237,7 @@ class UserController extends Controller
             'last_name'  => ['required', 'string', 'max:80'],
             'email'      => ['required', 'email', 'max:150', 'unique:users,email'],
             'password'   => ['required', 'string', 'min:6', 'max:72'],
-            'role_name'  => ['required', 'string', Rule::in(['student', 'employee', 'nurse', 'doctor', 'admin', 'coordinator'])],
+            'role_name'  => ['required', 'string', Rule::in(['student', 'employee', 'nurse', 'doctor', 'coordinator'])],
             'campus_id'  => ['required', 'integer', 'exists:campuses,id'],
             'is_active'  => ['nullable', 'boolean'],
         ]);
@@ -290,7 +290,7 @@ class UserController extends Controller
         return response()->json($user->load(['role', 'campus', 'department']), 201);
     }
 
-        public function resetPassword(Request $request, User $user): JsonResponse
+    public function resetPassword(Request $request, User $user): JsonResponse
     {
         $validated = $request->validate([
             'password' => ['required', 'string', 'min:6', 'max:72'],
@@ -306,7 +306,7 @@ class UserController extends Controller
             entityType: 'user',
             entityId: $user->id,
             oldValues: null,
-            newValues: ['message' => 'Password reset by admin'],
+            newValues: ['message' => 'Password reset by coordinator'],
         );
 
         return response()->json(['message' => 'Password reset successfully.']);
@@ -322,16 +322,16 @@ class UserController extends Controller
 
         $targetRoleName = Str::lower((string) ($user->role?->name ?? ''));
 
-        if ($targetRoleName === 'admin') {
-            $otherAdmins = User::query()
+        if ($targetRoleName === 'coordinator') {
+            $otherCoordinators = User::query()
                 ->where('id', '!=', $user->id)
                 ->where('is_active', true)
-                ->whereHas('role', fn ($q) => $q->whereRaw('LOWER(name) = ?', ['admin']))
+                ->whereHas('role', fn ($q) => $q->whereRaw('LOWER(name) = ?', ['coordinator']))
                 ->count();
 
-            if ($otherAdmins === 0) {
+            if ($otherCoordinators === 0) {
                 return response()->json([
-                    'message' => 'Cannot delete the last remaining admin account.',
+                    'message' => 'Cannot delete the last remaining coordinator account.',
                 ], 409);
             }
         }
@@ -366,4 +366,3 @@ class UserController extends Controller
         return response()->json(['success' => true, 'deleted_id' => $deletedId]);
     }
 }
-

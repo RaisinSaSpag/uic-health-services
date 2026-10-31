@@ -17,7 +17,6 @@ class TestUserSeeder extends Seeder
             ?? Campus::first()->id;
 
         $testUsers = [
-            ['email' => 'admin@uic.edu.ph',       'first_name' => 'Test', 'last_name' => 'Admin',       'role_id' => $roleIds['admin'] ?? null,       'password' => 'admin123'],
             ['email' => 'coordinator@uic.edu.ph', 'first_name' => 'Test', 'last_name' => 'Coordinator', 'role_id' => $roleIds['coordinator'] ?? null, 'password' => 'coord123'],
             ['email' => 'nurse@uic.edu.ph',       'first_name' => 'Test', 'last_name' => 'Nurse',       'role_id' => $roleIds['nurse'] ?? null,       'password' => 'nurse123'],
             ['email' => 'doctor@uic.edu.ph',      'first_name' => 'Test', 'last_name' => 'Doctor',      'role_id' => $roleIds['doctor'] ?? null,      'password' => 'doctor123'],

@@ -1,4 +1,4 @@
-export type RoleName = 'student' | 'employee' | 'nurse' | 'doctor' | 'admin' | 'coordinator' | string;
+export type RoleName = 'student' | 'employee' | 'nurse' | 'doctor' | 'coordinator' | string;
 
 export interface RoleRecord {
   id: number;
@@ -137,7 +137,7 @@ export interface Consultation {
   consulted_at?: string | null;
   started_at?: string | null;
   completed_at?: string | null;
-  
+
   // Telemed/Referral Fields
   is_telemed?: boolean;
   telemed_link?: string | null;

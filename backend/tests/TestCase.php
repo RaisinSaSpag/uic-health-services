@@ -23,7 +23,7 @@ abstract class TestCase extends BaseTestCase
 
     protected function seedReferenceData(): void
     {
-        foreach (['student', 'employee', 'nurse', 'doctor', 'admin'] as $roleName) {
+        foreach (['student', 'employee', 'nurse', 'doctor', 'coordinator'] as $roleName) {
             Role::firstOrCreate(
                 ['name' => $roleName],
                 ['description' => ucfirst($roleName).' role']
