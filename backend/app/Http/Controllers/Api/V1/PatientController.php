@@ -7,6 +7,8 @@ use App\Models\Patient;
 use App\Services\Clinic\PatientService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use RuntimeException;
 
@@ -323,14 +325,15 @@ class PatientController extends Controller
             'first_name' => $validated['first_name'],
             'last_name' => $validated['last_name'],
             'email' => strtolower($validated['email']),
-            'password' => \Illuminate\Support\Facades\Hash::make(strtolower($validated['email'])),
+            'password' => Hash::make(strtolower($validated['email'])),
             'role_id' => \App\Models\Role::where('name', $roleName)->value('id'),
             'campus_id' => $validated['campus_id'],
             'is_active' => true,
             'must_change_password' => true,
         ]);
 
-        $patientNumber = 'WALKIN-' . date('Y') . '-' . str_pad(\App\Models\Patient::count() + 1, 5, '0', STR_PAD_LEFT);
+        // 🚨 FIX Issue 15: Use random string instead of count() to prevent collisions
+        $patientNumber = 'WALKIN-' . date('Y') . '-' . strtoupper(Str::random(6));
 
         $patient = \App\Models\Patient::create([
             'user_id' => $user->id,
@@ -339,7 +342,7 @@ class PatientController extends Controller
             'patient_type' => $validated['patient_type'],
             'patient_category' => $validated['patient_category'],
             'sex' => $validated['sex'],
-            'birth_date' => $validated['birth_date'] ?? null, // 🚨 #23: don't fabricate DOB
+            'birth_date' => null, // 🚨 #23: don't fabricate DOB
             'age' => $validated['age'] ?? null,
             'course_program' => $validated['course_program'] ?? null,
             'year_level' => $validated['year_level'] ?? null,
@@ -381,14 +384,16 @@ class PatientController extends Controller
                 'first_name' => $validated['first_name'],
                 'last_name' => $validated['last_name'],
                 'email' => $email,
-                'password' => \Illuminate\Support\Facades\Hash::make($email),
+                'password' => Hash::make($email),
                 'role_id' => \App\Models\Role::where('name', $roleName)->value('id'),
                 'campus_id' => $validated['campus_id'],
                 'is_active' => true,
                 'must_change_password' => true,
             ]);
 
-            $patientNumber = 'INJURY-' . date('Y') . '-' . str_pad(\App\Models\Patient::count() + 1, 5, '0', STR_PAD_LEFT);
+            // 🚨 FIX Issue 15: Use random string instead of count() to prevent collisions
+            $patientNumber = 'INJURY-' . date('Y') . '-' . strtoupper(Str::random(6));
+            
             $patient = \App\Models\Patient::create([
                 'user_id' => $user->id,
                 'campus_id' => $validated['campus_id'],

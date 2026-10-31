@@ -174,7 +174,7 @@ class MessageController extends Controller
     public function groupThread(Request $request): JsonResponse
     {
         $messages = Message::query()
-            ->with('sender')
+            ->with(['sender.role']) // 🚨 FIX Issue 18: Eager-load role to prevent N+1
             ->where('is_group_chat', true)
             ->orderBy('created_at', 'asc')
             ->get()

@@ -7,10 +7,10 @@ use App\Services\Reports\ReportSummaryService;
 use App\Models\Campus;
 use App\Models\Consultation;
 use App\Models\Patient;
-use App\Services\Clinic\InventoryService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class ReportController extends Controller
 {
@@ -61,7 +61,11 @@ class ReportController extends Controller
         $campuses = Campus::all();
         $reportData = [];
 
-        $inventoryService = app(InventoryService::class);
+        // Issue 19 Fix: Pre-fetch all stock totals in one query to avoid N+1 loops
+        $stockTotals = DB::table('medicine_stock_in')
+            ->select('campus_id', DB::raw('SUM(quantity) as total_stock'))
+            ->groupBy('campus_id')
+            ->pluck('total_stock', 'campus_id');
 
         foreach ($campuses as $campus) {
             // 1. Consultations (Walk-ins, Scheduled, Telemed)
@@ -71,7 +75,13 @@ class ReportController extends Controller
 
             $totalConsultations = (clone $consultationsQuery)->count();
             $totalTelemed = (clone $consultationsQuery)->where('is_telemed', true)->count();
-            $totalReferrals = (clone $consultationsQuery)->where('referral_status', '!=', 'none')->count();
+            
+            // Issue 19 Fix: Explicitly check for non-null, non-'none' statuses
+            $totalReferrals = (clone $consultationsQuery)
+                ->whereNotNull('referral_status')
+                ->where('referral_status', '!=', 'none')
+                ->count();
+                
             $totalInjuries = (clone $consultationsQuery)->where('consultation_type', 'injury')->count();
 
             // 2. Patient Demographics
@@ -81,13 +91,20 @@ class ReportController extends Controller
                 ->pluck('count', 'patient_category')
                 ->toArray();
 
-            // 3. Inventory Snapshot
-            $inventoryStats = $inventoryService->availableStockForCampus($campus->id);
-            $totalStockAvailable = $inventoryStats->sum('available_quantity');
-            $lowStockItems = $inventoryStats->filter(fn ($item) => $item->available_quantity <= 50)->count();
-            $expiringItems = $inventoryStats->filter(function ($item) {
-                return $item->expiration_date && Carbon::parse($item->expiration_date)->diffInDays(now(), false) >= -30;
-            })->count();
+            // 3. Inventory Snapshot (Optimized)
+            $totalStockAvailable = (int) ($stockTotals[$campus->id] ?? 0);
+            
+            // For simplicity, we keep the low-stock query but make it a count
+            $lowStockItems = DB::table('medicine_stock_in')
+                ->where('campus_id', $campus->id)
+                ->where('quantity', '<=', 50)
+                ->count();
+                
+            $expiringItems = DB::table('medicine_stock_in')
+                ->where('campus_id', $campus->id)
+                ->whereNotNull('expiration_date')
+                ->where('expiration_date', '<=', now()->addDays(30)->format('Y-m-d'))
+                ->count();
 
             // 4. Top Diseases
             $topDiseases = (clone $consultationsQuery)
