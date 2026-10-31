@@ -12,6 +12,13 @@ class TestUserSeeder extends Seeder
 {
     public function run(): void
     {
+        // 🚨 SECURITY: Only seed test users in local/development/testing.
+        // Prevents public-password accounts from being created in production.
+        if (!app()->environment('local', 'development', 'testing')) {
+            $this->command->warn('Skipping TestUserSeeder — not in local/development environment.');
+            return;
+        }
+
         $roleIds = Role::pluck('id', 'name')->toArray();
         $campusId = Campus::where('code', 'FATHER_SELGA')->value('id')
             ?? Campus::first()->id;

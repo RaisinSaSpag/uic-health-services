@@ -264,7 +264,7 @@ export function NursePatientDetailPage() {
     if (!selectedConsultation) return [];
     return [
       { label: 'Chief Complaint', value: selectedConsultation.chief_complaint || 'N/A' },
-      { label: 'Diagnosis', value: selectedConsultation.diagnosis || selectedConsultation.symptoms || selectedConsultation.medical_record?.final_diagnosis || 'N/A' },
+      { label: 'Diagnosis', value: selectedConsultation.diagnosis || selectedConsultation.symptoms || selectedConsultation.medicalRecord?.final_diagnosis || 'N/A' },
       { label: 'Blood Pressure', value: selectedConsultation.blood_pressure || 'N/A' },
       { label: 'Pulse (BPM)', value: normalizeNumericText(selectedConsultation.pulse_bpm) },
       { label: 'Temperature (C)', value: normalizeNumericText(selectedConsultation.temperature_c, 'C') },
@@ -280,9 +280,9 @@ export function NursePatientDetailPage() {
       { label: 'Triage Notes', value: selectedConsultation.triage_notes || 'N/A' },
       { label: 'Referral Reason', value: selectedConsultation.referral?.referral_reason || 'N/A' },
       { label: 'Doctor Remarks', value: selectedConsultation.referral?.doctor_remarks || 'N/A' },
-      { label: 'Final Diagnosis', value: selectedConsultation.medical_record?.final_diagnosis || 'N/A' },
-      { label: 'Treatment Plan', value: selectedConsultation.medical_record?.treatment_plan || 'N/A' },
-      { label: 'Prescription', value: selectedConsultation.medical_record?.prescription || selectedConsultation.referral?.prescription || 'N/A' },
+      { label: 'Final Diagnosis', value: selectedConsultation.medicalRecord?.final_diagnosis || 'N/A' },
+      { label: 'Treatment Plan', value: selectedConsultation.medicalRecord?.treatment_plan || 'N/A' },
+      { label: 'Prescription', value: selectedConsultation.medicalRecord?.prescription || selectedConsultation.referral?.prescription || 'N/A' },
     ];
   }, [selectedConsultation]);
 

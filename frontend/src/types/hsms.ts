@@ -147,7 +147,7 @@ export interface Consultation {
   patient?: Patient;
   nurse?: UserRecord | null;
   referral?: Referral | null;
-  medical_record?: MedicalRecord | null;
+  medicalRecord?: MedicalRecord | null;
 }
 
 export interface AuditLog {
