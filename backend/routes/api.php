@@ -21,7 +21,11 @@ Route::prefix('v1')->group(function (): void {
     Route::get('/health', [HealthController::class, 'index']);
 
     Route::prefix('auth')->group(function (): void {
+        // Staff login (Nurse, Doctor, Coordinator)
         Route::post('/staff/login', [AuthController::class, 'staffLogin'])->middleware('throttle:20,1');
+
+        // Student/Employee login
+        Route::post('/student/login', [AuthController::class, 'studentLogin'])->middleware('throttle:20,1');
 
         Route::middleware(['jwt', 'throttle:60,1'])->group(function (): void {
             Route::get('/me', [AuthController::class, 'me']);
@@ -103,11 +107,11 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/inventory/available', [InventoryController::class, 'available']);
             Route::get('/inventory/low-stock', [InventoryController::class, 'lowStock']);
             Route::get('/inventory/expiring-soon', [InventoryController::class, 'expiringSoon']);
-            
+
             Route::post('/medicines', [MedicineController::class, 'store']);
             Route::patch('/medicines/{medicine}', [MedicineController::class, 'update']);
             Route::delete('/medicines/{medicine}', [MedicineController::class, 'destroy']);
-            
+
             Route::post('/inventory/stock-in', [InventoryController::class, 'stockIn']);
             Route::post('/inventory/dispense', [InventoryController::class, 'dispense']);
             Route::post('/inventory/archive', [InventoryController::class, 'archive']);

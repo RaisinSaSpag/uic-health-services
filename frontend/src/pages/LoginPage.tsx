@@ -26,7 +26,8 @@ export function LoginPage() {
 
     try {
       // The backend now accepts both staff and patients on this endpoint
-      const response = await api.post<AuthCallbackResponse>('/auth/staff/login', {
+      const endpoint = loginType === 'staff' ? '/auth/staff/login' : '/auth/student/login';
+      const response = await api.post<AuthCallbackResponse>(endpoint, {
         email,
         password,
       });

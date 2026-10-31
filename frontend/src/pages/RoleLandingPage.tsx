@@ -15,8 +15,8 @@ export function RoleLandingPage() {
     return <Navigate to="/coordinator" replace />;
   }
 
-  if (role === 'doctor') {
-    return <Navigate to="/doctor" replace />;
+  if (role === 'student' || role === 'employee') {
+    return <Navigate to="/patient" replace />;
   }
 
   return (

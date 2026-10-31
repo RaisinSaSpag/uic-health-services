@@ -13,7 +13,7 @@ class StaffPasswordLoginTest extends TestCase
 
     public function test_staff_roles_can_sign_in_with_password(): void
     {
-        foreach (['employee', 'nurse', 'doctor', 'admin'] as $role) {
+        foreach (['nurse', 'doctor', 'coordinator'] as $role) {
             $user = User::factory()->withRole($role)->create([
                 'email' => $role.'@uic.edu.ph',
                 'password' => Hash::make('test-password'),
