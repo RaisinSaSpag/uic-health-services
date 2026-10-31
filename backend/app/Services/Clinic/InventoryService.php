@@ -87,6 +87,13 @@ class InventoryService
                 throw new RuntimeException('Stock-in record not found.');
             }
 
+            // 🚨 PATIENT SAFETY: Reject expired batches
+            if ($stockIn->expiration_date && Carbon::parse($stockIn->expiration_date)->lt(Carbon::today())) {
+                throw new RuntimeException(
+                    "Cannot dispense expired stock. Batch expired on {$stockIn->expiration_date}."
+                );
+            }
+
             $available = $this->availableQuantityForStockIn($stockIn);
 
             if ($quantity > $available) {
@@ -215,7 +222,6 @@ class InventoryService
                 throw new RuntimeException('Archived record not found.');
             }
 
-            // Audit BEFORE delete
             $this->auditLogService->record($actorId, 'inventory.restored', 'medicine_archived', $archived->id, [
                 'stock_in_id' => $archived->stock_in_id,
                 'quantity' => $archived->quantity,
@@ -230,9 +236,9 @@ class InventoryService
 
     /**
      * Permanently delete an archived record AND the underlying stock batch
-     * if all its units are archived (available + dispensed = 0).
+     * if all its units are archived.
      */
-        public function deleteArchived(int $archivedId, int $actorId): void
+    public function deleteArchived(int $archivedId, int $actorId): void
     {
         DB::transaction(function () use ($archivedId, $actorId) {
             $archived = MedicineArchived::lockForUpdate()->find($archivedId);
@@ -244,7 +250,6 @@ class InventoryService
             $stockInId = $archived->stock_in_id;
             $quantity = $archived->quantity;
 
-            // Audit BEFORE delete
             $this->auditLogService->record($actorId, 'inventory.archived_deleted', 'medicine_archived', $archived->id, [
                 'stock_in_id' => $stockInId,
                 'quantity' => $quantity,
@@ -255,30 +260,36 @@ class InventoryService
 
             $stockIn = MedicineStockIn::lockForUpdate()->find($stockInId);
             if ($stockIn) {
-                // Permanently reduce the batch quantity so the deleted pills don't reappear
                 $newQuantity = max(0, (int) $stockIn->quantity - $quantity);
                 $stockIn->update(['quantity' => $newQuantity]);
 
-                // Check if the parent batch now has no available units and no other archived records
                 $dispensed = (int) MedicineStockOut::where('stock_in_id', $stockInId)->sum('quantity_dispensed');
                 $remainingArchived = (int) MedicineArchived::where('stock_in_id', $stockInId)->sum('quantity');
                 $available = max(0, $newQuantity - $dispensed - $remainingArchived);
 
-                // If nothing is left in circulation, we can safely delete the orphaned batch
                 if ($available === 0 && $remainingArchived === 0 && $dispensed === 0) {
                     $stockIn->delete();
                 }
             }
         });
     }
+
+    /**
+     * 🚨 PATIENT SAFETY: Excludes expired batches from dispensable stock.
+     */
     public function availableStockForCampus(int $campusId): Collection
     {
+        $today = Carbon::today()->toDateString();
+
         return MedicineStockIn::with(['medicine', 'campus'])
             ->where('campus_id', $campusId)
+            ->where(function ($q) use ($today) {
+                $q->whereNull('expiration_date')
+                  ->orWhere('expiration_date', '>=', $today);
+            })
             ->get()
             ->map(function (MedicineStockIn $stockIn) {
                 $stockIn->setAttribute('available_quantity', $this->availableQuantityForStockIn($stockIn));
-
                 return $stockIn;
             })
             ->filter(fn (MedicineStockIn $stockIn) => $stockIn->available_quantity > 0)
@@ -294,12 +305,20 @@ class InventoryService
 
     public function expiringSoon(int $campusId, int $daysAhead = 30): Collection
     {
+        $today = Carbon::today();
         $cutoff = Carbon::now()->addDays($daysAhead);
 
-        return $this->availableStockForCampus($campusId)
-            ->filter(function (MedicineStockIn $stockIn) use ($cutoff) {
-                return $stockIn->expiration_date && Carbon::parse($stockIn->expiration_date)->lte($cutoff);
+        return MedicineStockIn::with(['medicine', 'campus'])
+            ->where('campus_id', $campusId)
+            ->whereNotNull('expiration_date')
+            ->where('expiration_date', '>=', $today->toDateString()) // exclude already expired
+            ->where('expiration_date', '<=', $cutoff->toDateString())
+            ->get()
+            ->map(function (MedicineStockIn $stockIn) {
+                $stockIn->setAttribute('available_quantity', $this->availableQuantityForStockIn($stockIn));
+                return $stockIn;
             })
+            ->filter(fn (MedicineStockIn $stockIn) => $stockIn->available_quantity > 0)
             ->values();
     }
 }

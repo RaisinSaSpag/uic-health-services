@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnforcePasswordChange;
 use App\Http\Middleware\JwtAuthMiddleware;
 use App\Http\Middleware\RoleMiddleware;
 use App\Http\Middleware\SecurityHeadersMiddleware;
@@ -19,8 +20,11 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'jwt' => JwtAuthMiddleware::class,
             'role' => RoleMiddleware::class,
+            'enforce.password' => EnforcePasswordChange::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //
     })->create();
+
+    

@@ -34,7 +34,7 @@ Route::prefix('v1')->group(function (): void {
         });
     });
 
-    Route::middleware(['jwt', 'throttle:200,1'])->group(function (): void {
+    Route::middleware(['jwt', 'throttle:200,1', 'enforce.password'])->group(function (): void {
 
         // ============================================================
         // Patient Profile (Self-Service for Students/Employees)

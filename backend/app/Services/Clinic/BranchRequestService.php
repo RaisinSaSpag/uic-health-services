@@ -6,7 +6,9 @@ use App\Models\BranchRequest;
 use App\Models\MedicineArchived;
 use App\Models\MedicineStockIn;
 use App\Models\MedicineStockOut;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 class BranchRequestService
@@ -20,14 +22,17 @@ class BranchRequestService
     public function listForCampus(int $campusId): Collection
     {
         return BranchRequest::with(['medicine', 'fromCampus', 'toCampus', 'requestedBy', 'approvedBy'])
-            ->where('from_campus_id', $campusId)
-            ->orWhere('to_campus_id', $campusId)
+            ->where(function ($q) use ($campusId) {
+                $q->where('from_campus_id', $campusId)
+                  ->orWhere('to_campus_id', $campusId);
+            })
             ->orderBy('created_at', 'desc')
             ->get();
     }
 
     public function create(array $payload, int $actorId): BranchRequest
     {
+        $actor = $this->loadActor($actorId);
         $fromCampusId = (int) ($payload['from_campus_id'] ?? 0);
         $toCampusId = (int) ($payload['to_campus_id'] ?? 0);
         $medicineId = (int) ($payload['medicine_id'] ?? 0);
@@ -41,6 +46,13 @@ class BranchRequestService
             throw new RuntimeException('You cannot request medicine from your own campus.');
         }
 
+        // 🚨 SECURITY: nurses may only request stock FOR THEIR OWN CAMPUS.
+        // Coordinators may request on behalf of any campus.
+        $actorRole = strtolower((string) $actor->role?->name);
+        if ($actorRole !== 'coordinator' && (int) $actor->campus_id !== $fromCampusId) {
+            throw new RuntimeException('You may only create branch requests for your own campus.');
+        }
+
         if ($medicineId <= 0) {
             throw new RuntimeException('Medicine is required.');
         }
@@ -49,7 +61,7 @@ class BranchRequestService
             throw new RuntimeException('Quantity must be greater than zero.');
         }
 
-        // Validate that the target campus has enough stock to fulfill this request
+        // Validate that the supplying campus has enough stock
         $availableStock = MedicineStockIn::query()
             ->where('campus_id', $toCampusId)
             ->where('medicine_id', $medicineId)
@@ -71,7 +83,7 @@ class BranchRequestService
 
         if ($quantity > $available) {
             throw new RuntimeException(
-                "Insufficient stock at target campus. Available: {$available}, Requested: {$quantity}"
+                "Insufficient stock at supplying campus. Available: {$available}, Requested: {$quantity}"
             );
         }
 
@@ -96,7 +108,10 @@ class BranchRequestService
 
     public function approve(int $requestId, int $actorId): BranchRequest
     {
+        $actor = $this->loadActor($actorId);
         $request = $this->findPending($requestId);
+
+        $this->assertCanApproveOrReject($actor, $request, $actorId);
 
         $request->update([
             'status' => 'approved',
@@ -110,7 +125,10 @@ class BranchRequestService
 
     public function reject(int $requestId, int $actorId, string $reason = ''): BranchRequest
     {
+        $actor = $this->loadActor($actorId);
         $request = $this->findPending($requestId);
+
+        $this->assertCanApproveOrReject($actor, $request, $actorId);
 
         $request->update([
             'status' => 'rejected',
@@ -126,61 +144,112 @@ class BranchRequestService
 
     public function complete(int $requestId, int $actorId): BranchRequest
     {
-        $request = BranchRequest::find($requestId);
+        return DB::transaction(function () use ($requestId, $actorId) {
+            $actor = $this->loadActor($actorId);
+            $request = BranchRequest::lockForUpdate()->find($requestId);
 
-        if (!$request) {
-            throw new RuntimeException('Branch request not found.');
-        }
-
-        if ($request->status !== 'approved') {
-            throw new RuntimeException('Only approved requests can be completed.');
-        }
-
-        // --- RISK-09: Move the stock ---
-        
-        // 1. Check if the supplying campus has enough stock
-        $availableStock = $this->inventoryService->availableStockForCampus($request->to_campus_id)
-            ->where('medicine_id', $request->medicine_id)
-            ->sum('available_quantity');
-
-        if ($availableStock < $request->quantity_requested) {
-            throw new RuntimeException("Insufficient stock at supplying campus. Available: {$availableStock}, Requested: {$request->quantity_requested}");
-        }
-
-        // 2. Dispense the stock from the supplying campus (FIFO)
-        $remainingToDeduct = $request->quantity_requested;
-        $supplyBatches = $this->inventoryService->availableStockForCampus($request->to_campus_id)
-            ->where('medicine_id', $request->medicine_id)
-            ->sortBy('date_received');
-
-        foreach ($supplyBatches as $batch) {
-            if ($remainingToDeduct <= 0) break;
-
-            $deductAmount = min($remainingToDeduct, $batch->available_quantity);
-            if ($deductAmount > 0) {
-                $this->inventoryService->dispense([
-                    'stock_in_id' => $batch->id,
-                    'quantity_dispensed' => $deductAmount,
-                ], $actorId);
-
-                $remainingToDeduct -= $deductAmount;
+            if (!$request) {
+                throw new RuntimeException('Branch request not found.');
             }
+
+            if ($request->status !== 'approved') {
+                throw new RuntimeException('Only approved requests can be completed.');
+            }
+
+            // 🚨 SECURITY: only the supplying campus (or coordinator) may complete the transfer
+            $actorRole = strtolower((string) $actor->role?->name);
+            if ($actorRole !== 'coordinator' && (int) $actor->campus_id !== (int) $request->to_campus_id) {
+                throw new RuntimeException('Only the supplying campus (or a coordinator) can complete this request.');
+            }
+
+            // 1. Check if the supplying campus has enough stock
+            $availableStock = $this->inventoryService->availableStockForCampus($request->to_campus_id)
+                ->where('medicine_id', $request->medicine_id)
+                ->sum('available_quantity');
+
+            if ($availableStock < $request->quantity_requested) {
+                throw new RuntimeException(
+                    "Insufficient stock at supplying campus. Available: {$availableStock}, Requested: {$request->quantity_requested}"
+                );
+            }
+
+            // 2. Dispense the stock from the supplying campus (FIFO by expiry)
+            $remainingToDeduct = $request->quantity_requested;
+            $supplyBatches = $this->inventoryService->availableStockForCampus($request->to_campus_id)
+                ->where('medicine_id', $request->medicine_id)
+                ->sortBy('expiration_date'); // FEFO — earliest expiry first
+
+            $transferPlan = []; // Track what we're moving so the receiving batch matches
+
+            foreach ($supplyBatches as $batch) {
+                if ($remainingToDeduct <= 0) break;
+
+                $deductAmount = min($remainingToDeduct, $batch->available_quantity);
+                if ($deductAmount > 0) {
+                    $this->inventoryService->dispense([
+                        'stock_in_id' => $batch->id,
+                        'quantity_dispensed' => $deductAmount,
+                    ], $actorId);
+
+                    $transferPlan[] = [
+                        'expiration_date' => $batch->expiration_date,
+                        'quantity' => $deductAmount,
+                    ];
+
+                    $remainingToDeduct -= $deductAmount;
+                }
+            }
+
+            // 3. Create receiving batches that preserve each source batch's expiration
+            foreach ($transferPlan as $transfer) {
+                $this->inventoryService->stockIn([
+                    'medicine_id' => $request->medicine_id,
+                    'campus_id' => $request->from_campus_id,
+                    'quantity' => $transfer['quantity'],
+                    'date_received' => now()->format('Y-m-d'),
+                    'expiration_date' => $transfer['expiration_date'],
+                ], $actorId);
+            }
+
+            // 4. Update the request status
+            $request->update(['status' => 'completed']);
+            $this->auditLogService->record($actorId, 'branch_request.completed', 'branch_request', $request->id);
+
+            return $request->fresh();
+        });
+    }
+
+    /**
+     * Load actor with role/campus for authorization checks.
+     */
+    private function loadActor(int $actorId): User
+    {
+        $actor = User::with('role')->find($actorId);
+        if (!$actor) {
+            throw new RuntimeException('Acting user not found.');
+        }
+        return $actor;
+    }
+
+    /**
+     * Only a nurse/coordinator at the SUPPLYING campus can approve or reject.
+     * Self-approval is forbidden unless the actor is a coordinator.
+     */
+    private function assertCanApproveOrReject(User $actor, BranchRequest $request, int $actorId): void
+    {
+        $roleName = strtolower((string) $actor->role?->name);
+
+        if ($roleName === 'coordinator') {
+            return; // Coordinators can approve/reject any request
         }
 
-        // 3. Create a new stock-in record for the requesting campus
-        $this->inventoryService->stockIn([
-            'medicine_id' => $request->medicine_id,
-            'campus_id' => $request->from_campus_id,
-            'quantity' => $request->quantity_requested,
-            'date_received' => now()->format('Y-m-d'),
-            'expiration_date' => now()->addYear()->format('Y-m-d'),
-        ], $actorId);
+        if ((int) $actor->campus_id !== (int) $request->to_campus_id) {
+            throw new RuntimeException('Only the supplying campus can approve or reject this request.');
+        }
 
-        // 4. Update the request status
-        $request->update(['status' => 'completed']);
-        $this->auditLogService->record($actorId, 'branch_request.completed', 'branch_request', $request->id);
-
-        return $request->fresh();
+        if ((int) $request->requested_by === $actorId) {
+            throw new RuntimeException('You cannot approve your own branch request.');
+        }
     }
 
     private function findPending(int $requestId): BranchRequest
