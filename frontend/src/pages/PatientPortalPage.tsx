@@ -1,14 +1,14 @@
 ﻿import { useCallback, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { notifyError } from '../lib/alerts';
 import { formatDateTime, userDisplayName } from '../lib/format';
 import { getErrorMessage } from '../lib/http';
 import { StatusBadge } from '../components/StatusBadge';
+import { useAuth } from '../context/AuthContext';
 import type { Patient, Consultation } from '../types/hsms';
 
 export function PatientPortalPage() {
-  const navigate = useNavigate();
+  const { signOut } = useAuth();
   const [patient, setPatient] = useState<Patient | null>(null);
   const [consultations, setConsultations] = useState<Consultation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -57,7 +57,7 @@ export function PatientPortalPage() {
             <h2>Welcome, {userDisplayName(patient.user)}</h2>
             <p className="muted">Patient No: {patient.patient_number} · Campus: {patient.campus?.name}</p>
           </div>
-          <button className="button ghost" onClick={() => { /* handle logout */ }}>
+          <button className="button ghost" onClick={() => void signOut()}>
             Sign Out
           </button>
         </div>

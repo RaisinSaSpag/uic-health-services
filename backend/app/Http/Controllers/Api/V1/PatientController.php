@@ -346,4 +346,96 @@ class PatientController extends Controller
 
         return response()->json($patient->load('user'), 201);
     }
+
+    /**
+     * Quick Injury Log: Creates an injury consultation.
+     * Links to an existing patient if patient_id is provided, otherwise creates a new patient.
+     */
+    public function quickInjuryLog(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'patient_id' => ['nullable', 'integer', 'exists:patients,id'],
+            'first_name' => ['required_without:patient_id', 'string', 'max:255'],
+            'last_name' => ['required_without:patient_id', 'string', 'max:255'],
+            'patient_category' => ['required_without:patient_id', 'in:grade_school,high_school,college,employee'],
+            'campus_id' => ['required_without:patient_id', 'integer', 'exists:campuses,id'],
+            'chief_complaint' => ['required', 'string', 'max:1000'],
+        ]);
+
+        $patient = null;
+
+        if (isset($validated['patient_id'])) {
+            $patient = \App\Models\Patient::findOrFail($validated['patient_id']);
+        } else {
+            // Create new User + Patient
+            $email = 'walkin.' . uniqid() . '@uic.edu.ph';
+
+            $user = \App\Models\User::create([
+                'first_name' => $validated['first_name'],
+                'last_name' => $validated['last_name'],
+                'email' => $email,
+                'password' => \Illuminate\Support\Facades\Hash::make($email),
+                'role_id' => \App\Models\Role::where('name', 'student')->value('id'),
+                'campus_id' => $validated['campus_id'],
+                'is_active' => true,
+                'must_change_password' => true,
+            ]);
+
+            $patientNumber = 'INJURY-' . date('Y') . '-' . str_pad(\App\Models\Patient::count() + 1, 5, '0', STR_PAD_LEFT);
+            $patient = \App\Models\Patient::create([
+                'user_id' => $user->id,
+                'campus_id' => $validated['campus_id'],
+                'patient_number' => $patientNumber,
+                'patient_type' => 'student',
+                'patient_category' => $validated['patient_category'],
+                'sex' => 'unknown',
+                'birth_date' => '2000-01-01',
+                'age' => 20,
+            ]);
+        }
+
+        // Create Injury Consultation
+        $consultation = \App\Models\Consultation::create([
+            'patient_id' => $patient->id,
+            'nurse_id' => $request->user()->id,
+            'consultation_type' => 'injury',
+            'status' => 'nurse_assessment',
+            'chief_complaint' => $validated['chief_complaint'],
+            'submitted_at' => now(),
+            'started_at' => now(),
+        ]);
+
+        return response()->json([
+            'message' => 'Injury logged successfully.',
+            'consultation_id' => $consultation->id,
+            'patient_id' => $patient->id,
+        ], 201);
+    }
+
+    /**
+     * Search for patients (for Quick Injury Log).
+     */
+    public function search(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'q' => ['required', 'string', 'min:2', 'max:100'],
+        ]);
+
+        $query = $validated['q'];
+
+        $patients = \App\Models\Patient::query()
+            ->with(['user', 'campus'])
+            ->where(function ($q) use ($query) {
+                $q->where('patient_number', 'like', "%{$query}%")
+                  ->orWhereHas('user', function ($uq) use ($query) {
+                      $uq->where('first_name', 'like', "%{$query}%")
+                         ->orWhere('last_name', 'like', "%{$query}%")
+                         ->orWhere('email', 'like', "%{$query}%");
+                  });
+            })
+            ->limit(10)
+            ->get();
+
+        return response()->json($patients);
+    }
 }

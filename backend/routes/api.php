@@ -48,8 +48,10 @@ Route::prefix('v1')->group(function (): void {
         // ============================================================
         Route::middleware('role:nurse,coordinator')->group(function (): void {
             Route::get('/patients', [PatientController::class, 'index']);
+            Route::get('/patients/search', [PatientController::class, 'search']); // Must be above {patient}
             Route::get('/patients/{patient}', [PatientController::class, 'show'])->whereNumber('patient');
             Route::post('/patients', [PatientController::class, 'walkIn']);
+            Route::post('/patients/quick-injury', [PatientController::class, 'quickInjuryLog']);
             Route::get('/doctors', [UserController::class, 'doctors']);
             Route::patch('/consultations/{consultation}', [ConsultationController::class, 'update']);
             Route::post('/referrals', [ReferralController::class, 'store']);

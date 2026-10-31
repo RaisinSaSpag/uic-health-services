@@ -4,7 +4,6 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { RoleRoute } from './components/RoleRoute';
 import { CoordinatorAuditPage } from './pages/CoordinatorAuditPage';
 import { ChatPage } from './pages/ChatPage';
-import { AuthCallbackPage } from './pages/AuthCallbackPage';
 import { DoctorAboutPage } from './pages/DoctorAboutPage';
 import { DoctorDashboardPage } from './pages/DoctorDashboardPage';
 import { DoctorReferralsPage } from './pages/DoctorReferralsPage';
@@ -47,7 +46,6 @@ function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/auth/callback" element={<AuthCallbackPage />} />
 
       {/* Protected Routes */}
       <Route element={<ProtectedRoute />}>

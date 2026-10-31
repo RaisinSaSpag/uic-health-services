@@ -1,22 +1,19 @@
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import {
-  Bell,
-  ArrowLeftCircle,
-  Info,
-  LayoutDashboard,
-  Stethoscope,
-  MessageSquare,
-  type LucideIcon,
-  Plus,
-  Trash2,
+import { 
+  LayoutDashboard, 
+  Stethoscope, 
+  Info, 
+  MessageSquare, 
+  ArrowLeft,
+  Video
 } from 'lucide-react';
-import { StatusBadge } from '../components/StatusBadge';
-import { useAuth } from '../context/AuthContext';
 import { api } from '../lib/api';
 import { confirmAction, notifyError, notifySuccess } from '../lib/alerts';
 import { formatDateTime, userDisplayName } from '../lib/format';
 import { getErrorMessage } from '../lib/http';
+import { useAuth } from '../context/AuthContext';
+import { StatusBadge } from '../components/StatusBadge';
 import type { PaginatedResponse, Referral, Medicine } from '../types/hsms';
 
 type DoctorSection = 'dashboard' | 'referrals' | 'about' | 'chat' | 'notifications';
@@ -24,14 +21,7 @@ type DoctorSection = 'dashboard' | 'referrals' | 'about' | 'chat' | 'notificatio
 interface DoctorMenuItem {
   key: DoctorSection;
   label: string;
-  icon: LucideIcon;
-}
-
-interface PrescriptionRow {
-  id: string;
-  medicine_id: number | '';
-  quantity: number | '';
-  dosage_instructions: string;
+  icon: any;
 }
 
 const doctorMenuItems: DoctorMenuItem[] = [
@@ -39,7 +29,6 @@ const doctorMenuItems: DoctorMenuItem[] = [
   { key: 'referrals', label: 'Referrals', icon: Stethoscope },
   { key: 'about', label: 'About', icon: Info },
   { key: 'chat', label: 'Messages', icon: MessageSquare },
-  { key: 'notifications', label: 'Notifications', icon: Bell },
 ];
 
 const referralStatusOptions = [
@@ -48,26 +37,23 @@ const referralStatusOptions = [
   { value: 'in_progress', label: 'In Progress' },
 ];
 
-function normalizeText(value: string | null | undefined): string {
-  if (!value || value.trim() === '') {
-    return 'N/A';
-  }
-  return value.replace(/_/g, ' ');
-}
-
-function normalizeVital(value: string | number | null | undefined, suffix = ''): string {
-  if (value === null || value === undefined || value === '') {
-    return 'N/A';
-  }
-  return suffix ? `${value} ${suffix}` : String(value);
-}
-
 function parseReferralId(value: string | undefined): number | null {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed <= 0) {
     return null;
   }
   return parsed;
+}
+
+// ✅ Added missing helper functions locally
+function normalizeText(value: string | null | undefined): string {
+  if (!value) return 'N/A';
+  return value.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function normalizeVital(value: string | number | null | undefined, suffix = ''): string {
+  if (value === null || value === undefined || value === '') return 'N/A';
+  return suffix ? `${value} ${suffix}` : String(value);
 }
 
 export function DoctorReferralsPage() {
@@ -84,17 +70,14 @@ export function DoctorReferralsPage() {
   const [detailReferral, setDetailReferral] = useState<Referral | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [doctorRemarks, setDoctorRemarks] = useState('');
-  const [saving, setSaving] = useState(false);
-
-  // RISK-06: Structured Prescription State
+  const [prescriptions, setPrescriptions] = useState<Array<{ id: number; medicine_id: number; quantity: number; dosage_instructions: string }>>([]);
   const [medicines, setMedicines] = useState<Medicine[]>([]);
-  const [prescriptions, setPrescriptions] = useState<PrescriptionRow[]>([]);
+  const [saving, setSaving] = useState(false);
 
   const routeReferralId = useMemo(() => parseReferralId(rawReferralId), [rawReferralId]);
   const isDetailMode = routeReferralId !== null;
 
   const doctorName = useMemo(() => userDisplayName(user), [user]);
-  const campusName = useMemo(() => user?.campus ?? 'Campus not assigned', [user]);
 
   const loadReferrals = useCallback(async () => {
     if (isDetailMode) return;
@@ -103,7 +86,6 @@ export function DoctorReferralsPage() {
       const response = await api.get<PaginatedResponse<Referral>>('/referrals', {
         params: { per_page: 100, ...(statusFilter ? { status: statusFilter } : {}) },
       });
-      // Filter out completed referrals on the frontend as a safety net
       const activeReferrals = response.data.data.filter((r) => r.status !== 'completed');
       setReferrals(activeReferrals);
     } catch (err) {
@@ -115,9 +97,8 @@ export function DoctorReferralsPage() {
 
   const loadMedicines = useCallback(async () => {
     try {
-      const response = await api.get<PaginatedResponse<Medicine> | Medicine[]>('/medicines', { params: { per_page: 100 } });
-      const data = Array.isArray(response.data) ? response.data : response.data.data;
-      setMedicines(data);
+      const response = await api.get<PaginatedResponse<Medicine>>('/medicines?per_page=100');
+      setMedicines(response.data.data);
     } catch {
       // non-fatal; doctor can still complete referral without structured medicine
     }
@@ -133,7 +114,6 @@ export function DoctorReferralsPage() {
       const response = await api.get<Referral>(`/referrals/${routeReferralId}`);
       setDetailReferral(response.data);
       setDoctorRemarks(response.data.doctor_remarks ?? '');
-      // Load medicines for the dropdown
       if (medicines.length === 0) {
         void loadMedicines();
       }
@@ -174,27 +154,19 @@ export function DoctorReferralsPage() {
     setActiveSection(section);
     if (section === 'dashboard') { navigate('/doctor'); return; }
     if (section === 'chat') { navigate('/doctor/chat'); return; }
-    if (section === 'notifications') { navigate('/doctor/notifications'); return; }
-    if (section === 'referrals') { navigate('/doctor/referrals'); return; }
     if (section === 'about') { navigate('/doctor/about'); }
   };
 
-  // --- Prescription Row Handlers ---
   const addPrescriptionRow = () => {
-    setPrescriptions((current) => [
-      ...current,
-      { id: Date.now().toString(), medicine_id: '', quantity: 1, dosage_instructions: '' },
-    ]);
+    setPrescriptions((prev) => [...prev, { id: Date.now(), medicine_id: 0, quantity: 1, dosage_instructions: '' }]);
   };
 
-  const updatePrescriptionRow = (id: string, field: keyof PrescriptionRow, value: string | number) => {
-    setPrescriptions((current) =>
-      current.map((row) => (row.id === id ? { ...row, [field]: value } : row))
-    );
+  const updatePrescriptionRow = (id: number, field: string, value: any) => {
+    setPrescriptions((prev) => prev.map((p) => (p.id === id ? { ...p, [field]: value } : p)));
   };
 
-  const removePrescriptionRow = (id: string) => {
-    setPrescriptions((current) => current.filter((row) => row.id !== id));
+  const removePrescriptionRow = (id: number) => {
+    setPrescriptions((prev) => prev.filter((p) => p.id !== id));
   };
 
   const updateReferral = async (action: 'in_progress' | 'complete'): Promise<void> => {
@@ -205,38 +177,30 @@ export function DoctorReferralsPage() {
         void notifyError('Doctor remarks are required to complete this referral.', 'Missing Details');
         return;
       }
-      
-      const validPrescriptions = prescriptions.filter(p => p.medicine_id !== '' && p.quantity !== '');
-      if (prescriptions.length > 0 && validPrescriptions.length !== prescriptions.length) {
-        void notifyError('Please fill in all medicine and quantity fields for prescriptions.', 'Incomplete Prescriptions');
-        return;
-      }
-
       const confirmed = await confirmAction({
         title: 'Complete this referral?',
         text: `Referral #${detailReferral.id} will be marked as complete and prescriptions will be saved.`,
         confirmButtonText: 'Complete Referral',
         cancelButtonText: 'Cancel',
       });
-
       if (!confirmed) return;
 
       setSaving(true);
-
       try {
-        for (const p of validPrescriptions) {
-          await api.post('/prescriptions', {
-            consultation_id: detailReferral.consultation_id,
-            medicine_id: p.medicine_id,
-            quantity: p.quantity,
-            dosage_instructions: p.dosage_instructions,
-          });
+        for (const p of prescriptions) {
+          if (p.medicine_id > 0 && p.quantity > 0) {
+            await api.post('/prescriptions', {
+              consultation_id: detailReferral.consultation_id,
+              medicine_id: p.medicine_id,
+              quantity: p.quantity,
+              dosage_instructions: p.dosage_instructions,
+            });
+          }
         }
 
         await api.patch(`/referrals/${detailReferral.id}`, {
           action: 'complete',
           doctor_remarks: doctorRemarks.trim(),
-          prescription: 'See structured prescriptions',
         });
 
         await notifySuccess(`Referral #${detailReferral.id} updated and prescriptions saved.`, 'Referral Completed');
@@ -253,7 +217,6 @@ export function DoctorReferralsPage() {
         confirmButtonText: 'Mark In Progress',
         cancelButtonText: 'Cancel',
       });
-
       if (!confirmed) return;
 
       setSaving(true);
@@ -273,39 +236,39 @@ export function DoctorReferralsPage() {
   const canComplete = detailReferral ? ['pending_doctor', 'in_progress'].includes(detailReferral.status) : false;
 
   return (
-    <div className="nurse-dashboard-page">
-      <aside className="nurse-sidebar" aria-label="Doctor sidebar">
-        <div className="nurse-sidebar-brand">
-          <img className="nurse-sidebar-logo" src="/logo-white.png" alt="UIC logo" />
-          <div className="nurse-sidebar-identity">
-            <h3>{doctorName}</h3>
-            <p>{campusName}</p>
+    <div className="nurse-dashboard-layout">
+      {/* SIDEBAR */}
+      <aside className="nurse-sidebar">
+        <div className="nurse-sidebar-profile">
+          <div className="avatar">{doctorName.charAt(0)}</div>
+          <div>
+            <strong>{doctorName}</strong>
+            <span className="muted">Doctor</span>
           </div>
         </div>
-
-        <nav className="nurse-sidebar-nav" aria-label="Doctor navigation">
+        <nav className="nurse-side-nav">
           {doctorMenuItems.map((menuItem) => {
-            const MenuIcon = menuItem.icon;
+            const Icon = menuItem.icon;
             return (
-              <div className="nurse-nav-item" key={menuItem.key}>
-                <button
-                  className={`nurse-side-link${activeSection === menuItem.key ? ' active' : ''}`}
-                  onClick={() => onMenuClick(menuItem.key)}
-                  type="button"
-                >
-                  <MenuIcon className="nurse-side-icon" size={18} strokeWidth={2.2} />
-                  <span className="nurse-side-label">{menuItem.label}</span>
-                </button>
-              </div>
+              <button
+                key={menuItem.key}
+                className={`nurse-side-link${activeSection === menuItem.key ? ' active' : ''}`}
+                onClick={() => onMenuClick(menuItem.key)}
+                type="button"
+              >
+                <Icon size={18} />
+                {menuItem.label}
+              </button>
             );
           })}
         </nav>
       </aside>
 
+      {/* MAIN CONTENT */}
       <div className={`nurse-dashboard-main nurse-dashboard-main-detail${isDetailMode ? ' referral-detail-main' : ''}`}>
         {!isDetailMode ? (
           <section className="panel nurse-records-panel">
-            <div className="panel-head nurse-records-head">
+            <div className="nurse-records-header">
               <div>
                 <h2>Referral Consultations</h2>
                 <p className="muted small">View and manage nurse referral consultations.</p>
@@ -346,7 +309,7 @@ export function DoctorReferralsPage() {
                     <tr>
                       <th>Patient</th>
                       <th>Status</th>
-                      <th>Referred</th>
+                      <th>Referred At</th>
                       <th>Action</th>
                     </tr>
                   </thead>
@@ -376,22 +339,20 @@ export function DoctorReferralsPage() {
           </section>
         ) : (
           <>
-            <section className="panel">
-              <div className="panel-head">
-                <div>
-                  <h2>Referral Consultation Detail</h2>
-                </div>
-                <button
-                  aria-label="Back to referrals"
-                  className="button ghost referral-back-icon-button"
-                  onClick={() => navigate('/doctor/referrals')}
-                  title="Back to referrals"
-                  type="button"
-                >
-                  <ArrowLeftCircle size={18} strokeWidth={2.2} />
-                </button>
+            <div className="referral-detail-header">
+              <div>
+                <h2>Referral Consultation Detail</h2>
               </div>
-            </section>
+              <button
+                aria-label="Back to referrals"
+                className="button ghost referral-back-icon-button"
+                onClick={() => navigate('/doctor/referrals')}
+                title="Back to referrals"
+                type="button"
+              >
+                <ArrowLeft size={18} /> Back
+              </button>
+            </div>
 
             <section className="panel referral-workbench referral-workbench-detail">
               {loadingDetail || !detailReferral ? (
@@ -414,79 +375,93 @@ export function DoctorReferralsPage() {
                         <tr><td>Referral Reason</td><td>{detailReferral.referral_reason}</td></tr>
                       </tbody>
                     </table>
+
+                    {/* 🚨 NEW: Telemed Join Button */}
+                    {detailReferral.consultation?.is_telemed && detailReferral.consultation?.telemed_link && (
+                      <div style={{ marginTop: '1.5rem', padding: '1rem', background: '#e3f2fd', borderRadius: '8px', border: '1px solid #90caf9' }}>
+                        <h4 style={{ margin: '0 0 0.5rem 0', color: '#1565c0' }}>Telemed Consultation</h4>
+                        <p className="small" style={{ margin: '0 0 1rem 0' }}>The nurse has requested a telemed session for this patient.</p>
+                        <a 
+                          href={detailReferral.consultation.telemed_link} 
+                          target="_blank" 
+                          rel="noopener noreferrer" 
+                          className="button primary"
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', textDecoration: 'none' }}
+                        >
+                          <Video size={18} />
+                          Join Video Call
+                        </a>
+                      </div>
+                    )}
                   </article>
 
-                  <article className="nurse-consultation-detail-panel">
-                    <h3>Doctor Notes</h3>
-
+                  <article className="doctor-referral-panel">
+                    <h3>Doctor Assessment</h3>
                     <label className="field full-width">
-                      <span>Doctor Remarks (Required)</span>
+                      <span>Doctor Remarks</span>
                       <textarea
                         rows={4}
                         value={doctorRemarks}
-                        onChange={(event) => setDoctorRemarks(event.target.value)}
+                        onChange={(e) => setDoctorRemarks(e.target.value)}
                         placeholder="Enter your clinical remarks"
                         disabled={detailReferral.status === 'completed' || saving}
                       />
                     </label>
 
-                    <div style={{ marginTop: '1rem', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <h4 style={{ margin: 0 }}>Prescriptions</h4>
-                      {canComplete && (
-                        <button className="button ghost" type="button" onClick={addPrescriptionRow} disabled={saving}>
-                          <Plus size={16} /> Add Medicine
-                        </button>
-                      )}
+                    <div style={{ marginTop: '1rem', marginBottom: '1rem' }}>
+                      <h4>Prescriptions</h4>
+                      {prescriptions.map((row) => (
+                        <div key={row.id} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                          <select
+                            value={row.medicine_id}
+                            onChange={(e) => updatePrescriptionRow(row.id, 'medicine_id', Number(e.target.value))}
+                            disabled={detailReferral.status === 'completed' || saving}
+                            required
+                            style={{ flex: 2 }}
+                          >
+                            <option value={0}>Select Medicine</option>
+                            {medicines.map(m => (
+                              <option key={m.id} value={m.id}>{m.name}</option>
+                            ))}
+                          </select>
+                          <input
+                            type="number"
+                            placeholder="Qty"
+                            value={row.quantity}
+                            onChange={(e) => updatePrescriptionRow(row.id, 'quantity', Number(e.target.value))}
+                            disabled={detailReferral.status === 'completed' || saving}
+                            required
+                            style={{ width: '80px' }}
+                          />
+                          <input
+                            type="text"
+                            placeholder="Instructions"
+                            value={row.dosage_instructions}
+                            onChange={(e) => updatePrescriptionRow(row.id, 'dosage_instructions', e.target.value)}
+                            disabled={detailReferral.status === 'completed' || saving}
+                            style={{ flex: 3 }}
+                          />
+                          <button
+                            type="button"
+                            className="button ghost"
+                            onClick={() => removePrescriptionRow(row.id)}
+                            disabled={detailReferral.status === 'completed' || saving}
+                          >
+                            X
+                          </button>
+                        </div>
+                      ))}
+                      <button 
+                        type="button" 
+                        className="button secondary" 
+                        onClick={addPrescriptionRow}
+                        disabled={detailReferral.status === 'completed' || saving}
+                      >
+                        + Add Medicine
+                      </button>
                     </div>
 
-                    {prescriptions.map((row) => (
-                      <div key={row.id} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'flex-start' }}>
-                        <select
-                          className="input"
-                          style={{ flex: 2 }}
-                          value={row.medicine_id}
-                          onChange={(e) => updatePrescriptionRow(row.id, 'medicine_id', Number(e.target.value))}
-                          disabled={detailReferral.status === 'completed' || saving}
-                          required
-                        >
-                          <option value="">Select Medicine</option>
-                          {medicines.map((m) => (
-                            <option key={m.id} value={m.id}>{m.name}</option>
-                          ))}
-                        </select>
-                        <input
-                          className="input"
-                          style={{ flex: 1 }}
-                          type="number"
-                          min="1"
-                          placeholder="Qty"
-                          value={row.quantity}
-                          onChange={(e) => updatePrescriptionRow(row.id, 'quantity', Number(e.target.value))}
-                          disabled={detailReferral.status === 'completed' || saving}
-                          required
-                        />
-                        <input
-                          className="input"
-                          style={{ flex: 2 }}
-                          type="text"
-                          placeholder="Instructions (e.g. 1 tab 3x a day)"
-                          value={row.dosage_instructions}
-                          onChange={(e) => updatePrescriptionRow(row.id, 'dosage_instructions', e.target.value)}
-                          disabled={detailReferral.status === 'completed' || saving}
-                        />
-                        <button
-                          type="button"
-                          className="button ghost"
-                          onClick={() => removePrescriptionRow(row.id)}
-                          disabled={detailReferral.status === 'completed' || saving}
-                          title="Remove"
-                        >
-                          <Trash2 size={16} color="#d44974" />
-                        </button>
-                      </div>
-                    ))}
-
-                    <div className="action-row" style={{ marginTop: '1.5rem' }}>
+                    <div className="referral-actions" style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
                       {canSetInProgress && (
                         <button
                           className="button secondary"
@@ -497,7 +472,6 @@ export function DoctorReferralsPage() {
                           Mark In Progress
                         </button>
                       )}
-
                       {canComplete && (
                         <button
                           className="button success"
