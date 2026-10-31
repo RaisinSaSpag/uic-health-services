@@ -14,7 +14,7 @@ import { formatDateTime, userDisplayName } from '../lib/format';
 import { getErrorMessage } from '../lib/http';
 import { useAuth } from '../context/AuthContext';
 import { StatusBadge } from '../components/StatusBadge';
-import type { PaginatedResponse, Referral, Medicine } from '../types/hsms';
+import type { PaginatedResponse, Referral } from '../types/hsms';
 
 type DoctorSection = 'dashboard' | 'referrals' | 'about' | 'chat' | 'notifications';
 
@@ -45,7 +45,6 @@ function parseReferralId(value: string | undefined): number | null {
   return parsed;
 }
 
-// ✅ Added missing helper functions locally
 function normalizeText(value: string | null | undefined): string {
   if (!value) return 'N/A';
   return value.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
@@ -70,8 +69,7 @@ export function DoctorReferralsPage() {
   const [detailReferral, setDetailReferral] = useState<Referral | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [doctorRemarks, setDoctorRemarks] = useState('');
-  const [prescriptions, setPrescriptions] = useState<Array<{ id: number; medicine_id: number; quantity: number; dosage_instructions: string }>>([]);
-  const [medicines, setMedicines] = useState<Medicine[]>([]);
+  const [prescriptionText, setPrescriptionText] = useState(''); // 🚨 #14: free-text prescription
   const [saving, setSaving] = useState(false);
 
   const routeReferralId = useMemo(() => parseReferralId(rawReferralId), [rawReferralId]);
@@ -95,15 +93,6 @@ export function DoctorReferralsPage() {
     }
   }, [isDetailMode, statusFilter]);
 
-  const loadMedicines = useCallback(async () => {
-    try {
-      const response = await api.get<PaginatedResponse<Medicine>>('/medicines?per_page=100');
-      setMedicines(response.data.data);
-    } catch {
-      // non-fatal; doctor can still complete referral without structured medicine
-    }
-  }, []);
-
   const loadReferralDetail = useCallback(async () => {
     if (!routeReferralId) {
       setDetailReferral(null);
@@ -114,16 +103,14 @@ export function DoctorReferralsPage() {
       const response = await api.get<Referral>(`/referrals/${routeReferralId}`);
       setDetailReferral(response.data);
       setDoctorRemarks(response.data.doctor_remarks ?? '');
-      if (medicines.length === 0) {
-        void loadMedicines();
-      }
+      setPrescriptionText(response.data.prescription ?? '');
     } catch (err) {
       void notifyError(getErrorMessage(err, 'Unable to load selected referral.'), 'Load Failed');
       navigate('/doctor/referrals');
     } finally {
       setLoadingDetail(false);
     }
-  }, [navigate, routeReferralId, medicines.length, loadMedicines]);
+  }, [navigate, routeReferralId]);
 
   useEffect(() => {
     if (isDetailMode) {
@@ -157,18 +144,6 @@ export function DoctorReferralsPage() {
     if (section === 'about') { navigate('/doctor/about'); }
   };
 
-  const addPrescriptionRow = () => {
-    setPrescriptions((prev) => [...prev, { id: Date.now(), medicine_id: 0, quantity: 1, dosage_instructions: '' }]);
-  };
-
-  const updatePrescriptionRow = (id: number, field: string, value: any) => {
-    setPrescriptions((prev) => prev.map((p) => (p.id === id ? { ...p, [field]: value } : p)));
-  };
-
-  const removePrescriptionRow = (id: number) => {
-    setPrescriptions((prev) => prev.filter((p) => p.id !== id));
-  };
-
   const updateReferral = async (action: 'in_progress' | 'complete'): Promise<void> => {
     if (!detailReferral) return;
 
@@ -179,7 +154,7 @@ export function DoctorReferralsPage() {
       }
       const confirmed = await confirmAction({
         title: 'Complete this referral?',
-        text: `Referral #${detailReferral.id} will be marked as complete and prescriptions will be saved.`,
+        text: `Referral #${detailReferral.id} will be marked as complete${prescriptionText.trim() ? ' and prescription will be saved' : ''}.`,
         confirmButtonText: 'Complete Referral',
         cancelButtonText: 'Cancel',
       });
@@ -187,23 +162,13 @@ export function DoctorReferralsPage() {
 
       setSaving(true);
       try {
-        for (const p of prescriptions) {
-          if (p.medicine_id > 0 && p.quantity > 0) {
-            await api.post('/prescriptions', {
-              consultation_id: detailReferral.consultation_id,
-              medicine_id: p.medicine_id,
-              quantity: p.quantity,
-              dosage_instructions: p.dosage_instructions,
-            });
-          }
-        }
-
         await api.patch(`/referrals/${detailReferral.id}`, {
           action: 'complete',
           doctor_remarks: doctorRemarks.trim(),
+          prescription: prescriptionText.trim() || null,
         });
 
-        await notifySuccess(`Referral #${detailReferral.id} updated and prescriptions saved.`, 'Referral Completed');
+        await notifySuccess(`Referral #${detailReferral.id} completed.`, 'Referral Completed');
         navigate('/doctor/referrals');
       } catch (err) {
         void notifyError(getErrorMessage(err, `Failed to complete referral #${detailReferral.id}.`), 'Update Failed');
@@ -234,6 +199,7 @@ export function DoctorReferralsPage() {
 
   const canSetInProgress = detailReferral?.status === 'pending_doctor';
   const canComplete = detailReferral ? ['pending_doctor', 'in_progress'].includes(detailReferral.status) : false;
+  const isCompleted = detailReferral?.status === 'completed';
 
   return (
     <div className="nurse-dashboard-layout">
@@ -376,7 +342,7 @@ export function DoctorReferralsPage() {
                       </tbody>
                     </table>
 
-                    {/* 🚨 NEW: Telemed Join Button */}
+                    {/* Telemed Join Button */}
                     {detailReferral.consultation?.is_telemed && detailReferral.consultation?.telemed_link && (
                       <div style={{ marginTop: '1.5rem', padding: '1rem', background: '#e3f2fd', borderRadius: '8px', border: '1px solid #90caf9' }}>
                         <h4 style={{ margin: '0 0 0.5rem 0', color: '#1565c0' }}>Telemed Consultation</h4>
@@ -398,68 +364,30 @@ export function DoctorReferralsPage() {
                   <article className="doctor-referral-panel">
                     <h3>Doctor Assessment</h3>
                     <label className="field full-width">
-                      <span>Doctor Remarks</span>
+                      <span>Doctor Remarks *</span>
                       <textarea
                         rows={4}
                         value={doctorRemarks}
                         onChange={(e) => setDoctorRemarks(e.target.value)}
-                        placeholder="Enter your clinical remarks"
-                        disabled={detailReferral.status === 'completed' || saving}
+                        placeholder="Enter your clinical assessment, findings, and recommendations"
+                        disabled={isCompleted || saving}
                       />
                     </label>
 
-                    <div style={{ marginTop: '1rem', marginBottom: '1rem' }}>
-                      <h4>Prescriptions</h4>
-                      {prescriptions.map((row) => (
-                        <div key={row.id} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                          <select
-                            value={row.medicine_id}
-                            onChange={(e) => updatePrescriptionRow(row.id, 'medicine_id', Number(e.target.value))}
-                            disabled={detailReferral.status === 'completed' || saving}
-                            required
-                            style={{ flex: 2 }}
-                          >
-                            <option value={0}>Select Medicine</option>
-                            {medicines.map(m => (
-                              <option key={m.id} value={m.id}>{m.name}</option>
-                            ))}
-                          </select>
-                          <input
-                            type="number"
-                            placeholder="Qty"
-                            value={row.quantity}
-                            onChange={(e) => updatePrescriptionRow(row.id, 'quantity', Number(e.target.value))}
-                            disabled={detailReferral.status === 'completed' || saving}
-                            required
-                            style={{ width: '80px' }}
-                          />
-                          <input
-                            type="text"
-                            placeholder="Instructions"
-                            value={row.dosage_instructions}
-                            onChange={(e) => updatePrescriptionRow(row.id, 'dosage_instructions', e.target.value)}
-                            disabled={detailReferral.status === 'completed' || saving}
-                            style={{ flex: 3 }}
-                          />
-                          <button
-                            type="button"
-                            className="button ghost"
-                            onClick={() => removePrescriptionRow(row.id)}
-                            disabled={detailReferral.status === 'completed' || saving}
-                          >
-                            X
-                          </button>
-                        </div>
-                      ))}
-                      <button 
-                        type="button" 
-                        className="button secondary" 
-                        onClick={addPrescriptionRow}
-                        disabled={detailReferral.status === 'completed' || saving}
-                      >
-                        + Add Medicine
-                      </button>
-                    </div>
+                    {/* 🚨 #14: Free-text prescription (no dropdown — doctors type naturally) */}
+                    <label className="field full-width" style={{ marginTop: '1rem' }}>
+                      <span>Prescription (Optional)</span>
+                      <textarea
+                        rows={4}
+                        value={prescriptionText}
+                        onChange={(e) => setPrescriptionText(e.target.value)}
+                        placeholder="E.g.,&#10;- Paracetamol 500mg — 1 tablet every 6 hours as needed for fever&#10;- Amoxicillin 500mg — 1 capsule 3x daily for 7 days"
+                        disabled={isCompleted || saving}
+                      />
+                      <small className="muted" style={{ display: 'block', marginTop: '0.25rem' }}>
+                        Type the prescription as you would write it. Multiple medicines can be listed on separate lines.
+                      </small>
+                    </label>
 
                     <div className="referral-actions" style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
                       {canSetInProgress && (

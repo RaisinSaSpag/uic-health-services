@@ -56,13 +56,15 @@ class AuditLogController extends Controller
     }
 
     /**
-     * Campus-scoped history log for nurses.
-     * Returns audit entries for users belonging to the given campus.
+     * 🚨 History log scoped by campus.
+     *
+     * Per policy "read globally, write locally", nurses and doctors can view
+     * any campus's history. Students are blocked at the route level.
      */
     public function historyForCampus(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'campus_id' => ['required', 'integer', 'min:1'],
+            'campus_id' => ['required', 'integer', 'exists:campuses,id'],
             'action' => ['nullable', 'string', 'max:120'],
             'date_from' => ['nullable', 'date'],
             'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
