@@ -159,7 +159,6 @@ class UserController extends Controller
                 ], 403);
             }
 
-            // RISK-11: Prevent case-insensitive duplicate 500 errors on update
             if ($newEmail !== $user->email && User::where('email', $newEmail)->exists()) {
                 throw ValidationException::withMessages([
                     'email' => ['The email has already been taken.'],
@@ -236,7 +235,7 @@ class UserController extends Controller
             'first_name' => ['required', 'string', 'max:80'],
             'last_name'  => ['required', 'string', 'max:80'],
             'email'      => ['required', 'email', 'max:150', 'unique:users,email'],
-            'password'   => ['required', 'string', 'min:6', 'max:72'],
+            'password'   => ['required', 'string', 'min:8', 'max:72'], // 🚨 SECURITY: min 8 chars
             'role_name'  => ['required', 'string', Rule::in(['student', 'employee', 'nurse', 'doctor', 'coordinator'])],
             'campus_id'  => ['required', 'integer', 'exists:campuses,id'],
             'is_active'  => ['nullable', 'boolean'],
@@ -250,7 +249,6 @@ class UserController extends Controller
             ], 403);
         }
 
-        // RISK-11: Prevent case-insensitive duplicate 500 errors
         if (User::where('email', $normalizedEmail)->exists()) {
             throw ValidationException::withMessages([
                 'email' => ['The email has already been taken.'],
@@ -293,11 +291,12 @@ class UserController extends Controller
     public function resetPassword(Request $request, User $user): JsonResponse
     {
         $validated = $request->validate([
-            'password' => ['required', 'string', 'min:6', 'max:72'],
+            'password' => ['required', 'string', 'min:8', 'max:72'], // 🚨 SECURITY: min 8 chars
         ]);
 
         $user->update([
             'password' => Hash::make($validated['password']),
+            'must_change_password' => true, // 🚨 SECURITY: coordinator-set passwords are temporary
         ]);
 
         $this->auditLogService->log(
@@ -306,10 +305,10 @@ class UserController extends Controller
             entityType: 'user',
             entityId: $user->id,
             oldValues: null,
-            newValues: ['message' => 'Password reset by coordinator'],
+            newValues: ['message' => 'Password reset by coordinator; user must change on next login'],
         );
 
-        return response()->json(['message' => 'Password reset successfully.']);
+        return response()->json(['message' => 'Password reset successfully. User will be required to change it on next login.']);
     }
 
     public function destroy(Request $request, User $user): JsonResponse

@@ -23,8 +23,8 @@ class PatientController extends Controller
     {
         $validated = $request->validate([
             'patient_type' => ['nullable', 'in:student,employee'],
-            'campus_id' => ['nullable', 'integer', 'min:1'],
-            'department_id' => ['nullable', 'integer', 'min:1'],
+            'campus_id' => ['nullable', 'integer', 'exists:campuses,id'], // 🚨 #30
+            'department_id' => ['nullable', 'integer', 'exists:departments,id'], // 🚨 #30
             'search' => ['nullable', 'string', 'max:120'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
@@ -339,7 +339,7 @@ class PatientController extends Controller
             'patient_type' => $validated['patient_type'],
             'patient_category' => $validated['patient_category'],
             'sex' => $validated['sex'],
-            'birth_date' => $validated['birth_date'] ?? '2000-01-01',
+            'birth_date' => $validated['birth_date'] ?? null, // 🚨 #23: don't fabricate DOB
             'age' => $validated['age'] ?? null,
             'course_program' => $validated['course_program'] ?? null,
             'year_level' => $validated['year_level'] ?? null,
@@ -395,9 +395,9 @@ class PatientController extends Controller
                 'patient_number' => $patientNumber,
                 'patient_type' => $isEmployee ? 'employee' : 'student',
                 'patient_category' => $validated['patient_category'],
-                'sex' => 'unknown',
-                'birth_date' => '2000-01-01',
-                'age' => 20,
+                'sex' => null,       // 🚨 #23: don't fabricate sex
+                'birth_date' => null, // 🚨 #23: don't fabricate DOB
+                'age' => null,        // 🚨 #23: don't fabricate age
             ]);
         }
 

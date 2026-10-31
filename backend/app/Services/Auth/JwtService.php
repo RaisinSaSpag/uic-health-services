@@ -51,14 +51,16 @@ class JwtService
 
     public function ttlSeconds(): int
     {
-        $minutes = (int) env('JWT_TTL_MINUTES', 60);
+        // 🚨 Use config() not env() — env() returns null after `php artisan config:cache`
+        $minutes = (int) config('jwt.ttl_minutes', 60);
 
         return max(1, $minutes) * 60;
     }
 
     private function signingKey(): string
     {
-        $jwtSecret = (string) env('JWT_SECRET', '');
+        // 🚨 Use config() not env() — same reason as ttlSeconds()
+        $jwtSecret = (string) config('jwt.secret', '');
 
         if ($jwtSecret !== '') {
             return $jwtSecret;

@@ -7,6 +7,7 @@ use App\Models\Consultation;
 use App\Services\Clinic\ConsultationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use RuntimeException;
 
 class ConsultationController extends Controller
@@ -25,7 +26,7 @@ class ConsultationController extends Controller
             'consultation_type' => ['nullable', 'in:walk_in,scheduled,injury'],
             'referred_to_doctor' => ['nullable', 'boolean'],
             'submitted_date' => ['nullable', 'date_format:Y-m-d'],
-            'patient_id' => ['nullable', 'integer', 'min:1'],
+            'patient_id' => ['nullable', 'integer', 'exists:patients,id'], // 🚨 #30
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
 
@@ -46,8 +47,11 @@ class ConsultationController extends Controller
         $actorRole = strtolower((string) $request->user()?->role?->name);
         $isStaff = in_array($actorRole, ['nurse', 'coordinator'], true);
 
+        // 🚨 #19: detect referral early so diagnosis/remarks can be conditional
+        $isReferral = (bool) ($request->input('referred_to_doctor') ?? false);
+
         $validated = $request->validate([
-            'patient_id' => [$isStaff ? 'required' : 'nullable', 'integer', 'min:1'],
+            'patient_id' => [$isStaff ? 'required' : 'nullable', 'integer', 'exists:patients,id'], // 🚨 #30
             'consultation_type' => ['required', 'in:walk_in,scheduled,injury'],
             'consultation_date' => [$isStaff ? 'required' : 'nullable', 'date_format:Y-m-d'],
             'consultation_time' => [$isStaff ? 'required' : 'nullable', 'date_format:H:i'],
@@ -58,16 +62,29 @@ class ConsultationController extends Controller
             'last_menstrual_period' => ['nullable', 'date_format:Y-m-d'],
             'chief_complaint' => ['required', 'string', 'max:1000'],
             'symptoms' => ['nullable', 'string', 'max:2000'],
-            'diagnosis' => [$isStaff ? 'required' : 'nullable', 'string', 'max:1000'],
-            'remarks' => ['nullable', 'string', 'max:3000'],
-            'referred_to_doctor' => ['nullable', 'boolean'],
-        ]);
 
-        if (($validated['referred_to_doctor'] ?? false) === true) {
-            $request->validate([
-                'remarks' => ['required', 'string', 'max:3000'],
-            ]);
-        }
+            // 🚨 #19: diagnosis required for triage-only (staff, not referring).
+            // For referrals, doctor will diagnose — nurse only needs remarks/reason.
+            'diagnosis' => [
+                Rule::requiredIf($isStaff && ! $isReferral),
+                'nullable',
+                'string',
+                'max:1000',
+            ],
+
+            // 🚨 #19: remarks required when referring (acts as referral reason)
+            'remarks' => [
+                Rule::requiredIf($isReferral),
+                'nullable',
+                'string',
+                'max:3000',
+            ],
+
+            'referred_to_doctor' => ['nullable', 'boolean'],
+            'is_telemed' => ['nullable', 'boolean'],
+            'telemed_link' => ['nullable', 'url', 'max:500'],
+            'referral_notes' => ['nullable', 'string', 'max:3000'],
+        ]);
 
         try {
             $consultation = $this->consultationService->create($request->user(), $validated);

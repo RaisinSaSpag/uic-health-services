@@ -127,11 +127,30 @@ class AuthController extends Controller
 
     public function changePassword(Request $request): JsonResponse
     {
-        $validated = $request->validate([
-            'new_password' => ['required', 'string', 'min:6', 'confirmed'],
-        ]);
-
         $user = $request->user();
+        $mustChange = (bool) $user->must_change_password;
+
+        // 🚨 SECURITY: require current password for existing users,
+        // but allow users on their first forced change (walk-in password from email)
+        // to skip the check since they don't know it yet — it's their email.
+        $rules = [
+            'new_password' => ['required', 'string', 'min:8', 'confirmed'],
+        ];
+
+        if (! $mustChange) {
+            $rules['current_password'] = ['required', 'string'];
+        }
+
+        $validated = $request->validate($rules);
+
+        if (! $mustChange) {
+            if (! Hash::check($validated['current_password'], $user->password)) {
+                return response()->json([
+                    'message' => 'Current password is incorrect.',
+                ], 422);
+            }
+        }
+
         $user->password = Hash::make($validated['new_password']);
         $user->must_change_password = false;
         $user->save();

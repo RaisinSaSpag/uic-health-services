@@ -18,7 +18,7 @@ class BranchRequestController extends Controller
     public function index(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'campus_id' => ['required', 'integer', 'min:1'],
+            'campus_id' => ['required', 'integer', 'exists:campuses,id'], // 🚨 #30
         ]);
 
         $requests = $this->branchRequestService->listForCampus((int) $validated['campus_id']);
@@ -28,10 +28,11 @@ class BranchRequestController extends Controller
 
     public function store(Request $request): JsonResponse
     {
+        // 🚨 #30: FK IDs must exist, not just be positive integers
         $validated = $request->validate([
-            'from_campus_id' => ['required', 'integer', 'min:1'],
-            'to_campus_id' => ['required', 'integer', 'min:1', 'different:from_campus_id'],
-            'medicine_id' => ['required', 'integer', 'min:1'],
+            'from_campus_id' => ['required', 'integer', 'exists:campuses,id'],
+            'to_campus_id' => ['required', 'integer', 'exists:campuses,id', 'different:from_campus_id'],
+            'medicine_id' => ['required', 'integer', 'exists:medicines,id'],
             'quantity_requested' => ['required', 'integer', 'min:1'],
         ]);
 

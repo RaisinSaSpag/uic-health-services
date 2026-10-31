@@ -50,6 +50,9 @@ class ConsultationService
 
         $submittedAt = now();
 
+        // 🚨 #20: capture telemed + referral metadata so Command Center reports work
+        $isTelemed = $referredToDoctor && (bool) ($payload['is_telemed'] ?? false);
+
         $consultation = Consultation::create([
             'patient_id' => $patient->id,
             'nurse_id' => in_array($role, ['nurse', 'coordinator'], true) ? $user->id : null,
@@ -59,6 +62,10 @@ class ConsultationService
             'symptoms' => $payload['symptoms'] ?? null,
             'triage_notes' => $payload['remarks'] ?? null,
             'referred_to_doctor' => $referredToDoctor,
+            'is_telemed' => $isTelemed,
+            'telemed_link' => $isTelemed ? ($payload['telemed_link'] ?? null) : null,
+            'referral_status' => $referredToDoctor ? 'referred' : 'none',
+            'referral_notes' => $referredToDoctor ? ($payload['referral_notes'] ?? null) : null,
             'submitted_at' => $submittedAt,
             'started_at' => $isWalkIn ? $consultedAt : null,
             'consulted_at' => $consultedAt,
@@ -80,6 +87,7 @@ class ConsultationService
                 'status' => $consultation->status,
                 'consultation_type' => $consultation->consultation_type,
                 'referred_to_doctor' => $consultation->referred_to_doctor,
+                'is_telemed' => $consultation->is_telemed,
                 'consulted_at' => (string) $consultation->consulted_at,
                 'submitted_at' => (string) $consultation->submitted_at,
             ],
@@ -285,6 +293,7 @@ class ConsultationService
             'started_at' => $consultation->started_at ?? now(),
             'triage_notes' => $payload['triage_notes'] ?? null,
             'referred_to_doctor' => $referredToDoctor,
+            'referral_status' => $referredToDoctor ? 'referred' : 'none',
             'status' => $referredToDoctor ? 'referred_to_doctor' : 'nurse_assessment',
         ]);
 

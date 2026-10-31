@@ -15,7 +15,7 @@ interface ConsultationFormState {
   referredToDoctor: boolean;
   telemedLink: string;
   referralNotes: string;
-  referralDoctorId: string; // NEW: doctor selection
+  referralDoctorId: string;
   bloodPressure: string;
   pulseBpm: string;
   temperatureC: string;
@@ -142,7 +142,7 @@ export function NurseConsultationFormPage() {
         await api.post('/referrals', {
           consultation_id: consultationId,
           doctor_id: Number(form.referralDoctorId),
-          referral_reason: form.referralNotes || 'Nurse requested doctor assessment.',
+          referral_reason: form.remarks || form.referralNotes || 'Nurse requested doctor assessment.',
         });
       }
 
@@ -234,12 +234,24 @@ export function NurseConsultationFormPage() {
             <textarea required rows={3} value={form.complaints} onChange={(e) => handleChange('complaints', e.target.value)} placeholder="Describe the patient's symptoms..." />
           </label>
           <label className="field">
-            <span>Diagnosis (Nurse)</span>
-            <textarea rows={2} value={form.diagnosis} onChange={(e) => handleChange('diagnosis', e.target.value)} placeholder="Optional if referring to doctor" />
+            <span>Diagnosis (Nurse) {!form.referredToDoctor && '*'}</span>
+            <textarea
+              rows={2}
+              required={!form.referredToDoctor}
+              value={form.diagnosis}
+              onChange={(e) => handleChange('diagnosis', e.target.value)}
+              placeholder={form.referredToDoctor ? 'Optional — doctor will provide diagnosis' : 'Required for triage-only visits'}
+            />
           </label>
           <label className="field">
-            <span>Remarks / Treatment Plan</span>
-            <textarea rows={2} value={form.remarks} onChange={(e) => handleChange('remarks', e.target.value)} placeholder="E.g., Rest, hydration, paracetamol..." />
+            <span>Remarks / Treatment Plan {form.referredToDoctor && '*'}</span>
+            <textarea
+              rows={2}
+              required={form.referredToDoctor}
+              value={form.remarks}
+              onChange={(e) => handleChange('remarks', e.target.value)}
+              placeholder={form.referredToDoctor ? 'Required — explain why the doctor needs to see this patient' : 'E.g., Rest, hydration, paracetamol...'}
+            />
           </label>
         </div>
 
@@ -262,7 +274,6 @@ export function NurseConsultationFormPage() {
         {form.referredToDoctor && (
           <div style={{ background: '#f0f7ff', padding: '1.5rem', borderRadius: '8px', border: '1px solid #cce5ff', display: 'flex', flexDirection: 'column', gap: '1.5rem', marginBottom: '1.5rem' }}>
             
-            {/* NEW: Doctor Picker */}
             <label className="field">
               <span>Assign Doctor *</span>
               <select
@@ -289,8 +300,13 @@ export function NurseConsultationFormPage() {
               <input type="url" placeholder="https://meet.google.com/..." value={form.telemedLink} onChange={(e) => handleChange('telemedLink', e.target.value)} />
             </label>
             <label className="field">
-              <span>Referral Notes (Required for doctor)</span>
-              <textarea rows={3} value={form.referralNotes} onChange={(e) => handleChange('referralNotes', e.target.value)} placeholder="Explain why the doctor needs to see this patient..." required={form.referredToDoctor} />
+              <span>Referral Notes (Optional — extra context for doctor)</span>
+              <textarea
+                rows={3}
+                value={form.referralNotes}
+                onChange={(e) => handleChange('referralNotes', e.target.value)}
+                placeholder="Additional context beyond the remarks field..."
+              />
             </label>
           </div>
         )}

@@ -108,8 +108,17 @@ class ReferralService
 
         $role = strtolower((string) $user->role?->name);
 
+        // 🚨 #33: doctors can only view their own referrals
         if ($role === 'doctor' && (int) $referral->doctor_id !== (int) $user->id) {
             throw new RuntimeException('You are not allowed to view this referral.');
+        }
+
+        // 🚨 #33: nurses can only view referrals from their own consultations
+        if ($role === 'nurse') {
+            $consultationNurseId = (int) ($referral->consultation?->nurse_id ?? 0);
+            if ($consultationNurseId !== (int) $user->id) {
+                throw new RuntimeException('You are not allowed to view this referral.');
+            }
         }
 
         return $referral;
@@ -209,4 +218,3 @@ class ReferralService
         throw new RuntimeException('Unsupported referral action.');
     }
 }
-

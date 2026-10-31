@@ -19,8 +19,8 @@ class InventoryController extends Controller
     public function stockIn(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'medicine_id' => ['required', 'integer', 'min:1'],
-            'campus_id' => ['required', 'integer', 'min:1'],
+            'medicine_id' => ['required', 'integer', 'exists:medicines,id'], // 🚨 #30
+            'campus_id' => ['required', 'integer', 'exists:campuses,id'],     // 🚨 #30
             'quantity' => ['required', 'integer', 'min:1'],
             'date_received' => ['required', 'date_format:Y-m-d'],
             'expiration_date' => ['required', 'date_format:Y-m-d', 'after:date_received'],
