@@ -64,3 +64,7 @@ backend/reset-admin.php
 .DS_Store
 Thumbs.db
 *.swpbackend/database.sqlite
+
+system-scan.txt
+test-full.txt
+*.bak
