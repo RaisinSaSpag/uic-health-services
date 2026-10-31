@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Models\Consultation;
 use App\Models\Prescription;
 use App\Services\Clinic\PrescriptionService;
 use Illuminate\Http\JsonResponse;
@@ -21,7 +22,12 @@ class PrescriptionController extends Controller
             'consultation_id' => ['required', 'integer', 'min:1'],
         ]);
 
-        $prescriptions = $this->prescriptionService->listForConsultation((int) $validated['consultation_id']);
+        $consultationId = (int) $validated['consultation_id'];
+
+        // 🚨 SECURITY: Doctors can only see prescriptions for their assigned consultations.
+        $this->assertCanAccessConsultation($request, $consultationId);
+
+        $prescriptions = $this->prescriptionService->listForConsultation($consultationId);
 
         return response()->json($prescriptions);
     }
@@ -35,6 +41,9 @@ class PrescriptionController extends Controller
             'dosage_instructions' => ['nullable', 'string', 'max:500'],
         ]);
 
+        // 🚨 SECURITY: Doctors can only create prescriptions for their assigned consultations.
+        $this->assertCanAccessConsultation($request, (int) $validated['consultation_id']);
+
         try {
             $prescription = $this->prescriptionService->create($validated, $request->user()->id);
 
@@ -47,8 +56,11 @@ class PrescriptionController extends Controller
         }
     }
 
-    public function show(Prescription $prescription): JsonResponse
+    public function show(Request $request, Prescription $prescription): JsonResponse
     {
+        // 🚨 SECURITY: Doctors can only view prescriptions for their assigned consultations.
+        $this->assertCanAccessConsultation($request, (int) $prescription->consultation_id);
+
         return response()->json(
             $prescription->load(['medicine', 'prescribedBy', 'dispensedBy', 'consultation'])
         );
@@ -75,12 +87,48 @@ class PrescriptionController extends Controller
 
     public function cancel(Request $request, Prescription $prescription): JsonResponse
     {
+        // 🚨 SECURITY: Doctors can only cancel prescriptions for their assigned consultations.
+        $this->assertCanAccessConsultation($request, (int) $prescription->consultation_id);
+
         try {
             $updated = $this->prescriptionService->cancel($prescription->id, $request->user()->id);
 
             return response()->json($updated->load(['medicine']));
         } catch (RuntimeException $exception) {
             return response()->json(['message' => $exception->getMessage()], 409);
+        }
+    }
+
+    /**
+     * Ensures the acting user has access to the given consultation's prescriptions.
+     *
+     * Rules:
+     *   - Nurses and Coordinators: no restriction (they handle all consultations).
+     *   - Doctors: must be the assigned doctor on the consultation's referral.
+     */
+    private function assertCanAccessConsultation(Request $request, int $consultationId): void
+    {
+        $user = $request->user();
+        $roleName = strtolower((string) ($user?->role?->name ?? ''));
+
+        if (in_array($roleName, ['nurse', 'coordinator'], true)) {
+            return;
+        }
+
+        if ($roleName !== 'doctor') {
+            abort(403, 'You do not have permission to access this consultation.');
+        }
+
+        $consultation = Consultation::with('referral')->find($consultationId);
+
+        if (!$consultation) {
+            abort(404, 'Consultation not found.');
+        }
+
+        $assignedDoctorId = $consultation->referral?->doctor_id;
+
+        if ((int) $assignedDoctorId !== (int) $user->id) {
+            abort(403, 'You can only access prescriptions for consultations assigned to you.');
         }
     }
 }

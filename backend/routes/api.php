@@ -62,14 +62,17 @@ Route::prefix('v1')->group(function (): void {
         // Consultations (Allowed for everyone including Students)
         // ============================================================
         Route::middleware('role:doctor,nurse,coordinator,student,employee')->group(function (): void {
-            Route::get('/history-log', [AuditLogController::class, 'historyForCampus']);
             Route::get('/campuses', [CampusController::class, 'index']);
             Route::post('/consultations', [ConsultationController::class, 'store']);
             Route::get('/consultations', [ConsultationController::class, 'index']);
             Route::get('/consultations/{consultation}', [ConsultationController::class, 'show']);
         });
 
+        // ============================================================
+        // 🚨 AUDIT LOGS — Staff only (bug fix #5)
+        // ============================================================
         Route::middleware('role:nurse,coordinator,doctor')->group(function (): void {
+            Route::get('/history-log', [AuditLogController::class, 'historyForCampus']);
             Route::get('/referrals', [ReferralController::class, 'index']);
             Route::patch('/referrals/{referral}', [ReferralController::class, 'update']);
             Route::get('/referrals/{referral}', [ReferralController::class, 'show']);

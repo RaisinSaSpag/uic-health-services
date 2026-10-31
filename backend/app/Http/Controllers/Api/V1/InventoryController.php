@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Models\MedicineArchived;
 use App\Models\MedicineStockIn;
 use App\Services\Clinic\InventoryService;
 use Illuminate\Http\JsonResponse;
@@ -132,6 +133,10 @@ class InventoryController extends Controller
 
     public function restoreArchived(Request $request, int $id): JsonResponse
     {
+        // 🚨 SECURITY: verify the archive record belongs to the actor's campus
+        $archived = MedicineArchived::with('stockIn')->findOrFail($id);
+        $this->authorizeCampus($request, (int) ($archived->stockIn?->campus_id ?? 0));
+
         try {
             $restored = $this->inventoryService->restoreArchived($id, $request->user()->id);
 
@@ -146,6 +151,10 @@ class InventoryController extends Controller
 
     public function deleteArchived(Request $request, int $id): JsonResponse
     {
+        // 🚨 SECURITY: verify the archive record belongs to the actor's campus
+        $archived = MedicineArchived::with('stockIn')->findOrFail($id);
+        $this->authorizeCampus($request, (int) ($archived->stockIn?->campus_id ?? 0));
+
         try {
             $this->inventoryService->deleteArchived($id, $request->user()->id);
 

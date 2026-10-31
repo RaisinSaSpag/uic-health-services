@@ -6,13 +6,28 @@ use App\Models\Campus;
 use App\Models\Consultation;
 use App\Models\Medicine;
 use App\Models\MedicineStockIn;
+use App\Models\Patient;
 use App\Models\Prescription;
+use App\Models\Referral;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class PrescriptionApiTest extends TestCase
 {
     use RefreshDatabase;
+
+    /**
+     * Create a Referral that assigns the given doctor to the consultation.
+     * This makes the doctor "authorized" to access the consultation's prescriptions.
+     */
+    private function seedDoctorReferral($doctor, Consultation $consultation): Referral
+    {
+        return Referral::factory()->create([
+            'consultation_id' => $consultation->id,
+            'doctor_id' => $doctor->id,
+            'status' => 'in_progress',
+        ]);
+    }
 
     // ------------------------------------------------------------
     // CREATE
@@ -22,9 +37,12 @@ class PrescriptionApiTest extends TestCase
     {
         $doctor = $this->createUserWithRole('doctor');
         $student = $this->createUserWithRole('student');
-        $patient = \App\Models\Patient::factory()->create(['user_id' => $student->id]);
+        $patient = Patient::factory()->create(['user_id' => $student->id]);
         $consultation = Consultation::factory()->create(['patient_id' => $patient->id]);
         $medicine = Medicine::factory()->create();
+
+        // 🚨 Link the doctor to the consultation
+        $this->seedDoctorReferral($doctor, $consultation);
 
         $response = $this->asUser($doctor)->postJson('/api/v1/prescriptions', [
             'consultation_id' => $consultation->id,
@@ -68,8 +86,11 @@ class PrescriptionApiTest extends TestCase
     {
         $doctor = $this->createUserWithRole('doctor');
         $student = $this->createUserWithRole('student');
-        $patient = \App\Models\Patient::factory()->create(['user_id' => $student->id]);
+        $patient = Patient::factory()->create(['user_id' => $student->id]);
         $consultation = Consultation::factory()->create(['patient_id' => $patient->id]);
+
+        // 🚨 Link the doctor to the consultation
+        $this->seedDoctorReferral($doctor, $consultation);
 
         Prescription::factory()->count(2)->create([
             'consultation_id' => $consultation->id,
@@ -88,6 +109,10 @@ class PrescriptionApiTest extends TestCase
         $doctor = $this->createUserWithRole('doctor');
         $prescription = Prescription::factory()->create();
 
+        // 🚨 Link the doctor to the consultation of the prescription
+        $consultation = Consultation::find($prescription->consultation_id);
+        $this->seedDoctorReferral($doctor, $consultation);
+
         $response = $this->asUser($doctor)->getJson("/api/v1/prescriptions/{$prescription->id}");
 
         $response->assertOk()->assertJsonPath('id', $prescription->id);
@@ -103,6 +128,9 @@ class PrescriptionApiTest extends TestCase
         $nurse = $this->createUserWithRole('nurse');
 
         $campus = Campus::query()->first();
+        // Set the nurse's campus so the dispense check passes
+        $nurse->update(['campus_id' => $campus->id]);
+
         $medicine = Medicine::factory()->create();
         $stockIn = MedicineStockIn::factory()->create([
             'medicine_id' => $medicine->id,
@@ -111,7 +139,7 @@ class PrescriptionApiTest extends TestCase
         ]);
 
         $student = $this->createUserWithRole('student');
-        $patient = \App\Models\Patient::factory()->create(['user_id' => $student->id]);
+        $patient = Patient::factory()->create(['user_id' => $student->id]);
         $consultation = Consultation::factory()->create(['patient_id' => $patient->id]);
 
         $prescription = Prescription::factory()->create([
@@ -150,6 +178,8 @@ class PrescriptionApiTest extends TestCase
     {
         $nurse = $this->createUserWithRole('nurse');
         $campus = Campus::query()->first();
+        $nurse->update(['campus_id' => $campus->id]);
+
         $medicine = Medicine::factory()->create();
         $stockIn = MedicineStockIn::factory()->create([
             'medicine_id' => $medicine->id,
@@ -192,6 +222,10 @@ class PrescriptionApiTest extends TestCase
     {
         $doctor = $this->createUserWithRole('doctor');
         $prescription = Prescription::factory()->create(['status' => 'pending']);
+
+        // 🚨 Link the doctor to the consultation
+        $consultation = Consultation::find($prescription->consultation_id);
+        $this->seedDoctorReferral($doctor, $consultation);
 
         $response = $this->asUser($doctor)->patchJson(
             "/api/v1/prescriptions/{$prescription->id}/cancel"
@@ -236,24 +270,27 @@ class PrescriptionApiTest extends TestCase
         $response->assertForbidden();
     }
 
-        public function test_doctor_cannot_create_prescription_with_invalid_consultation_or_medicine(): void
+    public function test_doctor_cannot_create_prescription_with_invalid_consultation_or_medicine(): void
     {
         $doctor = $this->createUserWithRole('doctor');
-        $medicine = \App\Models\Medicine::factory()->create();
-        
-        // 1. Invalid consultation ID
+        $medicine = Medicine::factory()->create();
+
+        // 1. Invalid consultation ID → our code aborts with 404 (not found)
         $response = $this->asUser($doctor)->postJson('/api/v1/prescriptions', [
             'consultation_id' => 999999,
             'medicine_id' => $medicine->id,
             'quantity' => 10,
         ]);
-        $response->assertStatus(422)
+        $response->assertStatus(404)
             ->assertJsonPath('message', 'Consultation not found.');
 
-        // 2. Invalid medicine ID
+        // 2. Invalid medicine ID on a real consultation assigned to this doctor
         $student = $this->createUserWithRole('student');
-        $patient = \App\Models\Patient::factory()->create(['user_id' => $student->id]);
-        $consultation = \App\Models\Consultation::factory()->create(['patient_id' => $patient->id]);
+        $patient = Patient::factory()->create(['user_id' => $student->id]);
+        $consultation = Consultation::factory()->create(['patient_id' => $patient->id]);
+
+        // Link doctor to consultation so the access check passes
+        $this->seedDoctorReferral($doctor, $consultation);
 
         $response = $this->asUser($doctor)->postJson('/api/v1/prescriptions', [
             'consultation_id' => $consultation->id,
@@ -268,31 +305,29 @@ class PrescriptionApiTest extends TestCase
     {
         $doctor = $this->createUserWithRole('doctor');
         $nurse = $this->createUserWithRole('nurse');
-        $campus = \App\Models\Campus::query()->first();
+        $campus = Campus::query()->first();
+        $nurse->update(['campus_id' => $campus->id]);
 
-        $medicineA = \App\Models\Medicine::factory()->create(['name' => 'Meds A']);
-        $medicineB = \App\Models\Medicine::factory()->create(['name' => 'Meds B']);
+        $medicineA = Medicine::factory()->create(['name' => 'Meds A']);
+        $medicineB = Medicine::factory()->create(['name' => 'Meds B']);
 
-        // Stock batch is for Medicine B
-        $stockIn = \App\Models\MedicineStockIn::factory()->create([
+        $stockIn = MedicineStockIn::factory()->create([
             'medicine_id' => $medicineB->id,
             'campus_id' => $campus->id,
             'quantity' => 100,
         ]);
 
-        // Prescription is for Medicine A
         $student = $this->createUserWithRole('student');
-        $patient = \App\Models\Patient::factory()->create(['user_id' => $student->id]);
-        $consultation = \App\Models\Consultation::factory()->create(['patient_id' => $patient->id]);
+        $patient = Patient::factory()->create(['user_id' => $student->id]);
+        $consultation = Consultation::factory()->create(['patient_id' => $patient->id]);
 
-        $prescription = \App\Models\Prescription::factory()->create([
+        $prescription = Prescription::factory()->create([
             'consultation_id' => $consultation->id,
             'medicine_id' => $medicineA->id,
             'quantity' => 10,
             'status' => 'pending',
         ]);
 
-        // Try to dispense Medicine A prescription using Medicine B batch
         $response = $this->asUser($nurse)->patchJson("/api/v1/prescriptions/{$prescription->id}/dispense", [
             'stock_in_id' => $stockIn->id,
         ]);
@@ -300,7 +335,6 @@ class PrescriptionApiTest extends TestCase
         $response->assertStatus(409)
             ->assertJsonPath('message', 'The selected stock batch does not match the prescribed medicine.');
 
-        // Verify nothing was dispensed
         $this->assertDatabaseHas('prescriptions', [
             'id' => $prescription->id,
             'status' => 'pending',
