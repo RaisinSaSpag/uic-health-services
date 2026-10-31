@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { NotificationBell } from './NotificationBell';
 import { useAuth } from '../context/AuthContext';
@@ -149,16 +149,17 @@ export function AppShell() {
       return;
     }
 
+    // 🚨 #46: 60s polling (was 15s) — matches NotificationBell cadence
     const timer = window.setInterval(() => {
       void pollNotifications();
-    }, 15000);
+    }, 60000);
 
     return () => {
       window.clearInterval(timer);
     };
   }, [isClinician, pollNotifications]);
 
-    const onToggleBanners = (): void => {
+  const onToggleBanners = (): void => {
     setIsBannerEnabled((current) => {
       const nextValue = !current;
 
@@ -169,7 +170,6 @@ export function AppShell() {
       return nextValue;
     });
   };
-
 
   const hideNurseDashboardNavItem = currentRole === 'nurse' && location.pathname.startsWith('/nurse');
   const visibleNav = navItems
@@ -239,4 +239,3 @@ export function AppShell() {
     </div>
   );
 }
-

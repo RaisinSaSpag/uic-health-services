@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Models\User;
 use App\Services\Auth\JwtService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -15,63 +16,36 @@ class AuthController extends Controller
         private readonly JwtService $jwtService,
     ) {}
 
+    /**
+     * Staff login (Nurse, Doctor, Coordinator)
+     */
     public function staffLogin(Request $request): JsonResponse
     {
-        $credentials = $request->validate([
-            'email' => ['required', 'string', 'email', 'max:255'],
-            'password' => ['required', 'string', 'max:255'],
-        ]);
-
-        $user = \App\Models\User::query()
-            ->with(['role', 'campus', 'department'])
-            ->whereRaw('LOWER(email) = ?', [Str::lower($credentials['email'])])
-            ->first();
-
-        $allowedRoles = ['nurse', 'doctor', 'coordinator'];
-
-        if (
-            ! $user
-            || ! $user->is_active
-            || ! in_array(Str::lower((string) $user->role?->name), $allowedRoles, true)
-            || ! $user->password
-            || ! Hash::check($credentials['password'], $user->password)
-        ) {
-            return response()->json(['message' => 'The provided credentials are invalid.'], 401);
-        }
-
-        $user->forceFill(['last_login_at' => now()])->save();
-
-        return response()->json([
-            'token_type' => 'Bearer',
-            'access_token' => $this->jwtService->issueToken($user),
-            'expires_in' => $this->jwtService->ttlSeconds(),
-            'user' => [
-                'id' => $user->id,
-                'email' => $user->email,
-                'first_name' => $user->first_name,
-                'last_name' => $user->last_name,
-                'role' => $user->role?->name,
-                'campus_id' => $user->campus_id,
-                'campus' => $user->campus?->name,
-                'department' => $user->department?->name,
-                'must_change_password' => (bool) $user->must_change_password,
-            ],
-        ]);
+        return $this->performLogin($request, ['nurse', 'doctor', 'coordinator']);
     }
 
+    /**
+     * Student/Employee login
+     */
     public function studentLogin(Request $request): JsonResponse
+    {
+        return $this->performLogin($request, ['student', 'employee']);
+    }
+
+    /**
+     * Shared login logic — one method for both portals (audit #39).
+     */
+    private function performLogin(Request $request, array $allowedRoles): JsonResponse
     {
         $credentials = $request->validate([
             'email' => ['required', 'string', 'email', 'max:255'],
             'password' => ['required', 'string', 'max:255'],
         ]);
 
-        $user = \App\Models\User::query()
+        $user = User::query()
             ->with(['role', 'campus', 'department'])
             ->whereRaw('LOWER(email) = ?', [Str::lower($credentials['email'])])
             ->first();
-
-        $allowedRoles = ['student', 'employee'];
 
         if (
             ! $user
@@ -130,9 +104,6 @@ class AuthController extends Controller
         $user = $request->user();
         $mustChange = (bool) $user->must_change_password;
 
-        // 🚨 SECURITY: require current password for existing users,
-        // but allow users on their first forced change (walk-in password from email)
-        // to skip the check since they don't know it yet — it's their email.
         $rules = [
             'new_password' => ['required', 'string', 'min:8', 'confirmed'],
         ];

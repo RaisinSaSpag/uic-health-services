@@ -1,4 +1,4 @@
-﻿import { memo } from 'react';
+import { memo } from 'react';
 import { humanizeStatus } from '../lib/format';
 
 interface StatusBadgeProps {

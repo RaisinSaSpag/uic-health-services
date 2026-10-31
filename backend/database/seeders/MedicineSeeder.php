@@ -50,12 +50,13 @@ class MedicineSeeder extends Seeder
             return;
         }
 
-        $nurseIds = User::whereHas('role', fn ($q) => $q->whereIn('name', ['nurse', 'admin']))
+        // 🚨 Only nurses can be assigned as stock-in receivers (admin role removed)
+        $nurseIds = User::whereHas('role', fn ($q) => $q->whereIn('name', ['nurse']))
             ->pluck('id')
             ->toArray();
 
         if (empty($nurseIds)) {
-            $this->command->warn('No nurse/admin users found — stock-ins will have null received_by.');
+            $this->command->warn('No nurse users found — stock-ins will have null received_by.');
         }
 
         $allMedicines = Medicine::all();

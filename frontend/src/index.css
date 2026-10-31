@@ -257,17 +257,17 @@ strong {
 }
 
 .patient-portal-page,
-.admin-audit-page {
+.coordinator-audit-page {
   gap: 1.08rem;
 }
 
 .patient-portal-page .panel,
-.admin-audit-page .panel {
+.coordinator-audit-page .panel {
   padding: clamp(0.95rem, 1.55vw, 1.4rem);
 }
 
 .patient-portal-page .form-grid,
-.admin-audit-page .form-grid {
+.coordinator-audit-page .form-grid {
   gap: 0.95rem;
 }
 
@@ -3562,7 +3562,7 @@ pre {
 }
 
 /* ============================================================ */
-/* Print page — tab bar + inventory sheet                        */
+/* Print page â€” tab bar + inventory sheet                        */
 /* ============================================================ */
 
 .nurse-print-tabs {
@@ -3593,7 +3593,7 @@ pre {
   border-bottom-color: var(--primary);
 }
 
-/* Print-only inventory sheet — hidden on screen */
+/* Print-only inventory sheet â€” hidden on screen */
 .nurse-print-only-inventory {
   display: none;
 }

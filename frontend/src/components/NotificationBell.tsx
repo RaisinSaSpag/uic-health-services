@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, Bell, Check, Info, X } from 'lucide-react';
 import { api } from '../lib/api';
@@ -31,8 +31,9 @@ export const NotificationBell: React.FC = () => {
         params: { campus_id: campusId },
       });
       setNotifications(Array.isArray(res.data) ? res.data : []);
-    } catch (err) {
-      console.error('Failed to load notifications:', err);
+    } catch {
+      // 🚨 #42: silent — background poll failures are non-fatal.
+      // The next poll (60s) will retry automatically.
     }
   }, [campusId]);
 
@@ -54,8 +55,8 @@ export const NotificationBell: React.FC = () => {
 
     try {
       await api.post('/notifications/mark-read', { campus_id: campusId });
-    } catch (err) {
-      console.error('Failed to mark notifications read:', err);
+    } catch {
+      // 🚨 #42: silent — best-effort mark-read. Refetch to resync badge.
       void fetchNotifications();
     }
   };
