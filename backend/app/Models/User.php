@@ -25,7 +25,6 @@ class User extends Authenticatable
         'role_id',
         'campus_id',
         'department_id',
-        'google_sub',
         'email',
         'password',
         'first_name',

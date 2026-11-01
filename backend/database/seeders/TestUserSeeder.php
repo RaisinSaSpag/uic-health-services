@@ -12,7 +12,7 @@ class TestUserSeeder extends Seeder
 {
     public function run(): void
     {
-        // 🚨 SECURITY: Only seed test users in local/development/testing.
+        // SECURITY: Only seed test users in local/development/testing.
         // Prevents public-password accounts from being created in production.
         if (!app()->environment('local', 'development', 'testing')) {
             $this->command->warn('Skipping TestUserSeeder — not in local/development environment.');
@@ -41,7 +41,7 @@ class TestUserSeeder extends Seeder
                     'last_name' => $userData['last_name'],
                     'role_id' => $userData['role_id'],
                     'campus_id' => $campusId,
-                    'google_sub' => 'test_' . str_replace('@', '_at_', $userData['email']),
+                    'google_sub' => null,
                     'password' => Hash::make($userData['password']),
                     'is_active' => true,
                     'department_id' => null,

@@ -26,7 +26,7 @@ class ConsultationController extends Controller
             'consultation_type' => ['nullable', 'in:walk_in,scheduled,injury'],
             'referred_to_doctor' => ['nullable', 'boolean'],
             'submitted_date' => ['nullable', 'date_format:Y-m-d'],
-            'patient_id' => ['nullable', 'integer', 'exists:patients,id'], // 🚨 #30
+            'patient_id' => ['nullable', 'integer', 'exists:patients,id'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
 
@@ -47,11 +47,11 @@ class ConsultationController extends Controller
         $actorRole = strtolower((string) $request->user()?->role?->name);
         $isStaff = in_array($actorRole, ['nurse', 'coordinator'], true);
 
-        // 🚨 #19: detect referral early so diagnosis/remarks can be conditional
+        // Detect referral early so diagnosis/remarks can be conditional
         $isReferral = (bool) ($request->input('referred_to_doctor') ?? false);
 
         $validated = $request->validate([
-            'patient_id' => [$isStaff ? 'required' : 'nullable', 'integer', 'exists:patients,id'], // 🚨 #30
+            'patient_id' => [$isStaff ? 'required' : 'nullable', 'integer', 'exists:patients,id'],
             'consultation_type' => ['required', 'in:walk_in,scheduled,injury'],
             'consultation_date' => [$isStaff ? 'required' : 'nullable', 'date_format:Y-m-d'],
             'consultation_time' => [$isStaff ? 'required' : 'nullable', 'date_format:H:i'],
@@ -63,7 +63,7 @@ class ConsultationController extends Controller
             'chief_complaint' => ['required', 'string', 'max:1000'],
             'symptoms' => ['nullable', 'string', 'max:2000'],
 
-            // 🚨 #19: diagnosis required for triage-only (staff, not referring).
+            // Diagnosis required for triage-only (staff, not referring).
             // For referrals, doctor will diagnose — nurse only needs remarks/reason.
             'diagnosis' => [
                 Rule::requiredIf($isStaff && ! $isReferral),
@@ -72,7 +72,7 @@ class ConsultationController extends Controller
                 'max:1000',
             ],
 
-            // 🚨 #19: remarks required when referring (acts as referral reason)
+            // Remarks required when referring (acts as referral reason)
             'remarks' => [
                 Rule::requiredIf($isReferral),
                 'nullable',
@@ -150,16 +150,5 @@ class ConsultationController extends Controller
         } catch (RuntimeException $exception) {
             return response()->json(['message' => $exception->getMessage()], 409);
         }
-    }
-
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy(string $id): JsonResponse
-    {
-        return response()->json([
-            'message' => 'Consultation delete is not part of current workflow.',
-            'consultation_id' => $id,
-        ], 405);
     }
 }

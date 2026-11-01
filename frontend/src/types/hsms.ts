@@ -1,4 +1,4 @@
-export type RoleName = 'student' | 'employee' | 'nurse' | 'doctor' | 'coordinator' | string;
+export type RoleName = 'student' | 'employee' | 'nurse' | 'doctor' | 'coordinator';
 
 export interface RoleRecord {
   id: number;
@@ -51,7 +51,7 @@ export interface Patient {
   patient_type: string;
   patient_category?: string | null;
   sex: string;
-  birth_date: string;
+  birth_date: string | null;
   age?: number | null;
   address?: string | null;
   contact_number?: string | null;
@@ -110,6 +110,8 @@ export interface Referral {
   referral_reason: string;
   doctor_remarks?: string | null;
   prescription?: string | null;
+  final_diagnosis?: string | null;
+  treatment_plan?: string | null;
   referred_at: string;
   completed_at?: string | null;
   doctor?: UserRecord;
