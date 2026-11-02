@@ -26,6 +26,8 @@ class ConsultationController extends Controller
             'consultation_type' => ['nullable', 'in:walk_in,scheduled,injury'],
             'referred_to_doctor' => ['nullable', 'boolean'],
             'submitted_date' => ['nullable', 'date_format:Y-m-d'],
+            'date_from' => ['nullable', 'date_format:Y-m-d'], // <-- ADDED FOR ACADEMIC TERMS
+            'date_to' => ['nullable', 'date_format:Y-m-d'],   // <-- ADDED FOR ACADEMIC TERMS
             'patient_id' => ['nullable', 'integer', 'exists:patients,id'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
@@ -47,7 +49,6 @@ class ConsultationController extends Controller
         $actorRole = strtolower((string) $request->user()?->role?->name);
         $isStaff = in_array($actorRole, ['nurse', 'coordinator'], true);
 
-        // Detect referral early so diagnosis/remarks can be conditional
         $isReferral = (bool) ($request->input('referred_to_doctor') ?? false);
 
         $validated = $request->validate([
@@ -63,8 +64,6 @@ class ConsultationController extends Controller
             'chief_complaint' => ['required', 'string', 'max:1000'],
             'symptoms' => ['nullable', 'string', 'max:2000'],
 
-            // Diagnosis required for triage-only (staff, not referring).
-            // For referrals, doctor will diagnose — nurse only needs remarks/reason.
             'diagnosis' => [
                 Rule::requiredIf($isStaff && ! $isReferral),
                 'nullable',
@@ -72,7 +71,6 @@ class ConsultationController extends Controller
                 'max:1000',
             ],
 
-            // Remarks required when referring (acts as referral reason)
             'remarks' => [
                 Rule::requiredIf($isReferral),
                 'nullable',

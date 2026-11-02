@@ -50,7 +50,6 @@ class ConsultationService
 
         $submittedAt = now();
 
-        // 🚨 #20: capture telemed + referral metadata so Command Center reports work
         $isTelemed = $referredToDoctor && (bool) ($payload['is_telemed'] ?? false);
 
         $consultation = Consultation::create([
@@ -130,6 +129,14 @@ class ConsultationService
 
         if (isset($filters['patient_id']) && $filters['patient_id'] !== null) {
             $query->where('patient_id', (int) $filters['patient_id']);
+        }
+
+        // 🚨 ADDED FOR ACADEMIC TERMS: Date range filtering
+        if (isset($filters['date_from']) && $filters['date_from']) {
+            $query->whereDate('created_at', '>=', $filters['date_from']);
+        }
+        if (isset($filters['date_to']) && $filters['date_to']) {
+            $query->whereDate('created_at', '<=', $filters['date_to']);
         }
 
         return $query

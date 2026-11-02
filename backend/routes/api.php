@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\V1\PrescriptionController;
 use App\Http\Controllers\Api\V1\ReferralController;
 use App\Http\Controllers\Api\V1\ReportController;
 use App\Http\Controllers\Api\V1\UserController;
+use App\Http\Controllers\Api\V1\AcademicTermController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function (): void {
@@ -41,7 +42,7 @@ Route::prefix('v1')->group(function (): void {
         // ============================================================
         Route::middleware('role:student,employee')->group(function (): void {
             Route::get('/patients/me', [PatientController::class, 'me']);
-            Route::patch('/patients/me', [PatientController::class, 'updateMe']); // <-- NEW ROUTE
+            Route::patch('/patients/me', [PatientController::class, 'updateMe']);
         });
 
         // ============================================================
@@ -49,7 +50,7 @@ Route::prefix('v1')->group(function (): void {
         // ============================================================
         Route::middleware('role:nurse,coordinator')->group(function (): void {
             Route::get('/patients', [PatientController::class, 'index']);
-            Route::get('/patients/search', [PatientController::class, 'search']); // Must be above {patient}
+            Route::get('/patients/search', [PatientController::class, 'search']);
             Route::get('/patients/{patient}', [PatientController::class, 'show'])->whereNumber('patient');
             Route::post('/patients', [PatientController::class, 'walkIn']);
             Route::post('/patients/quick-injury', [PatientController::class, 'quickInjuryLog']);
@@ -70,13 +71,16 @@ Route::prefix('v1')->group(function (): void {
         });
 
         // ============================================================
-        // 🚨 AUDIT LOGS — Staff only (bug fix #5)
+        // 🚨 AUDIT LOGS & ACADEMIC TERMS (Staff only)
         // ============================================================
         Route::middleware('role:nurse,coordinator,doctor')->group(function (): void {
             Route::get('/history-log', [AuditLogController::class, 'historyForCampus']);
             Route::get('/referrals', [ReferralController::class, 'index']);
             Route::patch('/referrals/{referral}', [ReferralController::class, 'update']);
             Route::get('/referrals/{referral}', [ReferralController::class, 'show']);
+            
+            // Allow staff to read academic terms (e.g., for the Nurse dashboard)
+            Route::get('/academic-terms', [AcademicTermController::class, 'index']);
         });
 
         // ============================================================
@@ -90,12 +94,18 @@ Route::prefix('v1')->group(function (): void {
         });
 
         // ============================================================
-        // Coordinator - Command Center
+        // Coordinator - Command Center & Management
         // ============================================================
         Route::middleware('role:coordinator')->group(function (): void {
             Route::get('/audit-logs', [AuditLogController::class, 'index']);
             Route::get('/reports/command-center', [ReportController::class, 'clinicCommandCenter']);
             Route::get('/reports/campus-detail/{campusCode}', [ReportController::class, 'campusDetail']);
+            
+            // Academic Terms Management
+            Route::post('/academic-terms', [AcademicTermController::class, 'store']);
+            Route::patch('/academic-terms/{term}/activate', [AcademicTermController::class, 'activate']);
+            
+            // User Management
             Route::get('/users', [UserController::class, 'index'])->middleware('throttle:30,1');
             Route::patch('/users/{user}/role', [UserController::class, 'updateRole'])->whereNumber('user')->middleware('throttle:10,1');
             Route::post('/users', [UserController::class, 'store'])->middleware('throttle:10,1');
@@ -114,7 +124,7 @@ Route::prefix('v1')->group(function (): void {
         });
 
         // ============================================================
-        // Medicines Catalog — WRITE (Coordinators only — audit #16)
+        // Medicines Catalog — WRITE (Coordinators only)
         // ============================================================
         Route::middleware('role:coordinator')->group(function (): void {
             Route::post('/medicines', [MedicineController::class, 'store']);
@@ -123,7 +133,7 @@ Route::prefix('v1')->group(function (): void {
         });
 
         // ============================================================
-        // Inventory Management (Nurses + Coordinators — campus enforced in controller)
+        // Inventory Management
         // ============================================================
         Route::middleware('role:nurse,coordinator')->group(function (): void {
             Route::get('/inventory/available', [InventoryController::class, 'available']);
@@ -140,7 +150,7 @@ Route::prefix('v1')->group(function (): void {
         });
 
         // ============================================================
-        // Branch Requests (No Doctor, No Student)
+        // Branch Requests
         // ============================================================
         Route::middleware('role:nurse,coordinator')->group(function (): void {
             Route::get('/branch-requests', [BranchRequestController::class, 'index']);

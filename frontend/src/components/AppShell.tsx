@@ -11,6 +11,7 @@ interface NavItem {
   to: string;
   label: string;
   roles: RoleName[];
+  end?: boolean;
 }
 
 const navItems: NavItem[] = [
@@ -18,20 +19,34 @@ const navItems: NavItem[] = [
     to: '/patient',
     label: 'Patient Portal',
     roles: ['student', 'employee'],
+    end: true,
   },
   {
     to: '/nurse',
     label: 'Nurse Dashboard',
     roles: ['nurse'],
+    end: true,
   },
   {
     to: '/doctor',
     label: 'Doctor Referrals',
     roles: ['doctor'],
+    end: true,
   },
   {
     to: '/coordinator',
     label: 'Coordinator Dashboard',
+    roles: ['coordinator'],
+    end: true,
+  },
+  {
+    to: '/coordinator/users',
+    label: 'User Management',
+    roles: ['coordinator'],
+  },
+  {
+    to: '/coordinator/terms',
+    label: 'Academic Terms', // <-- NEW LINK
     roles: ['coordinator'],
   },
   {
@@ -149,7 +164,6 @@ export function AppShell() {
       return;
     }
 
-    // 🚨 #46: 60s polling (was 15s) — matches NotificationBell cadence
     const timer = window.setInterval(() => {
       void pollNotifications();
     }, 60000);
@@ -198,6 +212,7 @@ export function AppShell() {
             {visibleNav.map((item) => (
               <NavLink
                 key={item.to}
+                end={item.end}
                 className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
                 to={item.to}
               >

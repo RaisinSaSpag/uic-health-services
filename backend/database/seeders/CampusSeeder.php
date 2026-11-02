@@ -10,7 +10,6 @@ class CampusSeeder extends Seeder
     public function run(): void
     {
         $campuses = [
-            ['code' => 'MAIN',         'name' => 'Main Campus',         'address' => 'On-premise site'],
             ['code' => 'FATHER_SELGA', 'name' => 'Father Selga Campus', 'address' => 'Father Selga, Davao City'],
             ['code' => 'BONIFACIO',    'name' => 'Bonifacio Campus',    'address' => 'Bonifacio, Davao City'],
             ['code' => 'BAJADA_GS',    'name' => 'Bajada Grade School', 'address' => 'Bajada, Davao City'],

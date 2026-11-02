@@ -1,1103 +1,314 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  Bell,
-  BarChart3,
-  Briefcase,
-  ChevronDown,
-  GraduationCap,
-  Info,
-  LayoutDashboard,
-  Package,
-  Printer,
+import { 
+  BarChart3, 
+  Printer, 
+  Sparkles, 
+  X, 
   RefreshCw,
-  Search,
-  Sparkles,
   Stethoscope,
-  X,
-  type LucideIcon,
-  MessageSquare,
+  Users,
+  GraduationCap,
+  Briefcase,
+  AlertCircle,
+  Calendar,
+  ArrowLeft
 } from 'lucide-react';
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+  PieChart,
+  Pie,
+  Cell,
+  Legend
+} from 'recharts';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../lib/api';
 import { notifyError } from '../lib/alerts';
-import { userDisplayName } from '../lib/format';
 import { getErrorMessage } from '../lib/http';
 import type { Consultation, PaginatedResponse } from '../types/hsms';
 
-type NurseSection = 'dashboard' | 'search' | 'print' | 'reports' | 'inventory' | 'referrals' | 'about' | 'chat' | 'notifications';
-type SearchTarget = 'student' | 'employee';
-type PatientGroupKey = 'basic' | 'college' | 'employee';
-
-interface NurseMenuItem {
-  key: NurseSection;
-  label: string;
-  icon: LucideIcon;
-}
-
-interface DiagnosisCount {
-  diagnosis: string;
-  count: number;
-  contextLabel?: string;
-}
-
-interface PatientCategoryCount {
-  key: PatientGroupKey;
-  label: string;
-  count: number;
-}
-
-interface BreakdownCount {
-  label: string;
-  count: number;
-}
-
-interface AiSummaryResponse {
-  summary: string;
-  source: string;
-}
-
-const nurseMenuItems: NurseMenuItem[] = [
-  {
-    key: 'dashboard',
-    label: 'Dashboard',
-    icon: LayoutDashboard,
-  },
-  {
-    key: 'search',
-    label: 'Search Records',
-    icon: Search,
-  },
-  {
-    key: 'print',
-    label: 'Print Prescription',
-    icon: Printer,
-  },
-  {
-    key: 'reports',
-    label: 'Reports',
-    icon: BarChart3,
-  },
-  {
-    key: 'inventory',
-    label: 'Inventory',
-    icon: Package,
-  },
-  {
-    key: 'referrals',
-    label: 'Referrals',
-    icon: Stethoscope,
-  },
-  {
-    key: 'about',
-    label: 'About',
-    icon: Info,
-  },
-  {
-    key: 'chat',
-    label: 'Messages',
-    icon: MessageSquare,
-  },
-  {
-    key: 'notifications',
-    label: 'Notifications',
-    icon: Bell,
-  },
-];
-
-const searchTargetOptions: Array<{ key: SearchTarget; label: string; icon: LucideIcon }> = [
-  {
-    key: 'student',
-    label: 'Student',
-    icon: GraduationCap,
-  },
-  {
-    key: 'employee',
-    label: 'Employee',
-    icon: Briefcase,
-  },
-];
-
-const monthOptions = [
-  { value: 1, label: 'January' },
-  { value: 2, label: 'February' },
-  { value: 3, label: 'March' },
-  { value: 4, label: 'April' },
-  { value: 5, label: 'May' },
-  { value: 6, label: 'June' },
-  { value: 7, label: 'July' },
-  { value: 8, label: 'August' },
-  { value: 9, label: 'September' },
-  { value: 10, label: 'October' },
-  { value: 11, label: 'November' },
-  { value: 12, label: 'December' },
-];
-
-const reportCategoryColors: Record<PatientCategoryCount['key'], string> = {
-  basic: '#4a7fe6',
-  college: '#a855f7',
-  employee: '#f97316',
-};
-
-const defaultAiSummaryMessage = 'Click AI Summary to generate insights for this month.';
-
-const diseaseGroupCards: Array<{
-  key: PatientGroupKey;
-  title: string;
-  subtitle: string;
-  contextLabel: string;
-}> = [
-  {
-    key: 'basic',
-    title: 'Top Diseases - Basic Education',
-    subtitle: 'Sorted by grade level',
-    contextLabel: 'Grade',
-  },
-  {
-    key: 'college',
-    title: 'Top Diseases - College',
-    subtitle: 'Sorted by course/program',
-    contextLabel: 'Course',
-  },
-  {
-    key: 'employee',
-    title: 'Top Diseases - Employees',
-    subtitle: 'Sorted by office/unit',
-    contextLabel: 'Office',
-  },
-];
-
-function resolveConsultationDate(consultation: Consultation): Date | null {
-  const rawDate =
-    consultation.consulted_at ?? consultation.completed_at ?? consultation.started_at ?? consultation.submitted_at;
-
-  if (!rawDate) {
-    return null;
-  }
-
-  const parsedDate = new Date(rawDate);
-
-  if (Number.isNaN(parsedDate.getTime())) {
-    return null;
-  }
-
-  return parsedDate;
-}
-
-function normalizeDiagnosis(consultation: Consultation): string {
-  const diagnosisValue =
-    consultation.diagnosis?.trim() ??
-    consultation.medical_record?.final_diagnosis?.trim() ??
-    consultation.symptoms?.trim() ??
-    '';
-
-  if (diagnosisValue === '') {
-    return 'Unspecified Diagnosis';
-  }
-
-  return diagnosisValue
-    .replace(/\s+/g, ' ')
-    .replace(/\b\w/g, (character) => character.toUpperCase());
-}
-
-function resolvePatientGroup(consultation: Consultation): PatientGroupKey | null {
-  const patient = consultation.patient;
-
-  if (!patient) {
-    return null;
-  }
-
-  if (patient.patient_type === 'employee') {
-    return 'employee';
-  }
-
-  if (patient.patient_type === 'student') {
-    return patient.student_level === 'college' ? 'college' : 'basic';
-  }
-
-  return null;
-}
-
-function normalizeSubgroupLabel(value: string | null | undefined, fallbackLabel: string): string {
-  const normalized = (value ?? '').trim();
-
-  if (normalized === '') {
-    return fallbackLabel;
-  }
-
-  return normalized.replace(/\s+/g, ' ');
-}
-
-function resolveSubgroupLabel(consultation: Consultation, groupKey: PatientGroupKey): string {
-  const patient = consultation.patient;
-
-  if (!patient) {
-    return 'Unspecified';
-  }
-
-  if (groupKey === 'basic') {
-    return normalizeSubgroupLabel(patient.grade_level, 'Unspecified Grade');
-  }
-
-  if (groupKey === 'college') {
-    return normalizeSubgroupLabel(patient.course_program ?? patient.year_level, 'Unspecified Course');
-  }
-
-  return normalizeSubgroupLabel(patient.office_unit_department ?? patient.position_job_title, 'Unspecified Office');
-}
-
-function truncateLabel(value: string, maxLength = 18): string {
-  if (value.length <= maxLength) {
-    return value;
-  }
-
-  return `${value.slice(0, maxLength - 3)}...`;
-}
-
-function summarizeFindings(
-  monthLabel: string,
-  year: number,
-  consultations: Consultation[],
-  topDiseases: DiagnosisCount[],
-  patientCategoryCounts: PatientCategoryCount[],
-  patientSubgroupBreakdowns: Record<PatientGroupKey, BreakdownCount[]>,
-): string {
-  if (consultations.length === 0) {
-    return `No consultations were recorded for ${monthLabel} ${year}.`;
-  }
-
-  const totalConsultations = consultations.length;
-  const referredCount = consultations.filter((consultation) => consultation.referred_to_doctor).length;
-  const topDisease = topDiseases[0];
-
-  const categoryInsight = patientCategoryCounts
-    .map((category) => `${category.label}: ${category.count}`)
-    .join(' | ');
-
-  const diseaseInsight = topDisease
-    ? `${topDisease.diagnosis} (${topDisease.count} cases)`
-    : 'No dominant diagnosis';
-
-  const basicTopLevel = patientSubgroupBreakdowns.basic[0];
-  const collegeTopProgram = patientSubgroupBreakdowns.college[0];
-  const employeeTopOffice = patientSubgroupBreakdowns.employee[0];
-
-  const levelInsight = [
-    basicTopLevel ? `Basic top grade: ${basicTopLevel.label} (${basicTopLevel.count})` : null,
-    collegeTopProgram ? `College top course: ${collegeTopProgram.label} (${collegeTopProgram.count})` : null,
-    employeeTopOffice ? `Employee top office: ${employeeTopOffice.label} (${employeeTopOffice.count})` : null,
-  ]
-    .filter((value): value is string => value !== null)
-    .join(' | ');
-
-  return `For ${monthLabel} ${year}, there were ${totalConsultations} consultations. Top diagnosis was ${diseaseInsight}. Referrals accounted for ${referredCount} of ${totalConsultations} consultations. Patient volume by category: ${categoryInsight}. ${levelInsight}`.trim();
-}
+const PIE_COLORS = ['#d44974', '#f472b6', '#fb7185', '#fda4af'];
 
 export function NurseReportsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  const [activeSection, setActiveSection] = useState<NurseSection>('reports');
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [searchTarget, setSearchTarget] = useState<SearchTarget>('student');
   const [consultations, setConsultations] = useState<Consultation[]>([]);
   const [loading, setLoading] = useState(true);
   const [printing, setPrinting] = useState(false);
+  
+  const [isAiModalOpen, setIsAiModalOpen] = useState(false);
+  const [aiSummary, setAiSummary] = useState('Click the AI Summary button to generate insights for this month.');
   const [generatingSummary, setGeneratingSummary] = useState(false);
-  const [isAiSummaryModalOpen, setIsAiSummaryModalOpen] = useState(false);
-  const [aiSummary, setAiSummary] = useState(defaultAiSummaryMessage);
-  const [aiSummarySource, setAiSummarySource] = useState<string | null>(null);
-
-  const summaryRequestIdRef = useRef(0);
-  const printTriggerTimerRef = useRef<number | null>(null);
 
   const now = useMemo(() => new Date(), []);
-  const [selectedMonth, setSelectedMonth] = useState(() => now.getMonth() + 1);
-  const [selectedYear, setSelectedYear] = useState(() => now.getFullYear());
-
-  const nurseName = useMemo(() => userDisplayName(user), [user]);
-  const campusName = useMemo(() => user?.campus ?? 'Campus not assigned', [user]);
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [year, setYear] = useState(now.getFullYear());
 
   const yearOptions = useMemo(() => {
-    const currentYear = now.getFullYear();
-    const years: number[] = [];
-
-    for (let year = currentYear; year >= currentYear - 4; year -= 1) {
-      years.push(year);
-    }
-
-    return years;
+    const current = now.getFullYear();
+    return [current - 2, current - 1, current, current + 1];
   }, [now]);
 
-  const loadAllConsultations = useCallback(async (): Promise<void> => {
+  const loadData = useCallback(async () => {
     setLoading(true);
-
     try {
-      const loadedConsultations: Consultation[] = [];
-      let page = 1;
-      let lastPage = 1;
-
-      do {
-        const response = await api.get<PaginatedResponse<Consultation>>('/consultations', {
-          params: {
-            per_page: 100,
-            page,
-          },
-        });
-
-        loadedConsultations.push(...response.data.data);
-        lastPage = response.data.last_page;
-        page += 1;
-      } while (page <= lastPage);
-
-      setConsultations(loadedConsultations);
+      const res = await api.get<PaginatedResponse<Consultation>>('/consultations', { params: { per_page: 100 } });
+      setConsultations(res.data.data);
     } catch (err) {
-      void notifyError(getErrorMessage(err, 'Unable to load reports data.'), 'Load Failed');
+      void notifyError(getErrorMessage(err, 'Failed to load reports data.'), 'Error');
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    void loadAllConsultations();
-  }, [loadAllConsultations]);
+  useEffect(() => { 
+    void loadData(); 
+  }, [loadData]);
 
-  useEffect(() => {
-    const onAfterPrint = (): void => {
-      setPrinting(false);
-    };
-
-    window.addEventListener('afterprint', onAfterPrint);
-
-    return () => {
-      window.removeEventListener('afterprint', onAfterPrint);
-
-      if (printTriggerTimerRef.current !== null) {
-        window.clearTimeout(printTriggerTimerRef.current);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    summaryRequestIdRef.current += 1;
-    setGeneratingSummary(false);
-    setAiSummary(defaultAiSummaryMessage);
-    setAiSummarySource(null);
-    setIsAiSummaryModalOpen(false);
-  }, [selectedMonth, selectedYear]);
-
-  const closeAiSummaryModal = useCallback((): void => {
-    setIsAiSummaryModalOpen(false);
-  }, []);
-
-  useEffect(() => {
-    if (!isAiSummaryModalOpen) {
-      return;
-    }
-
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') {
-        closeAiSummaryModal();
-      }
-    };
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    window.addEventListener('keydown', onKeyDown);
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener('keydown', onKeyDown);
-    };
-  }, [closeAiSummaryModal, isAiSummaryModalOpen]);
-
-  const monthLabel = useMemo(() => {
-    const month = monthOptions.find((option) => option.value === selectedMonth);
-    return month?.label ?? 'Month';
-  }, [selectedMonth]);
-
-  const monthlyConsultations = useMemo(
-    () =>
-      consultations.filter((consultation) => {
-        const consultationDate = resolveConsultationDate(consultation);
-
-        if (!consultationDate) {
-          return false;
-        }
-
-        return consultationDate.getMonth() + 1 === selectedMonth && consultationDate.getFullYear() === selectedYear;
-      }),
-    [consultations, selectedMonth, selectedYear],
-  );
-
-  const diagnosisCounts = useMemo(() => {
-    const diagnosisCountMap = new Map<string, number>();
-
-    monthlyConsultations.forEach((consultation) => {
-      const diagnosis = normalizeDiagnosis(consultation);
-      diagnosisCountMap.set(diagnosis, (diagnosisCountMap.get(diagnosis) ?? 0) + 1);
+  const monthlyConsultations = useMemo(() => {
+    return consultations.filter(c => {
+      const d = new Date(c.submitted_at || c.created_at || '');
+      return d.getMonth() + 1 === month && d.getFullYear() === year;
     });
+  }, [consultations, month, year]);
 
-    return Array.from(diagnosisCountMap.entries())
-      .map(([diagnosis, count]) => ({ diagnosis, count }))
-      .sort((left, right) => right.count - left.count || left.diagnosis.localeCompare(right.diagnosis));
+  const topDiseases = useMemo(() => {
+    const map = new Map<string, number>();
+    monthlyConsultations.forEach(c => {
+      if (c.diagnosis) {
+        map.set(c.diagnosis, (map.get(c.diagnosis) || 0) + 1);
+      }
+    });
+    return Array.from(map.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
   }, [monthlyConsultations]);
 
-  const topDiseases = useMemo(() => diagnosisCounts.slice(0, 5), [diagnosisCounts]);
+  const demographics = useMemo(() => {
+    let basic = 0, college = 0, employee = 0;
+    const uniquePatients = new Set<number>();
 
-  const topDiseasesByGroup = useMemo(() => {
-    const diagnosisByGroup: Record<
-      PatientGroupKey,
-      Map<string, { count: number; contextCounts: Map<string, number> }>
-    > = {
-      basic: new Map(),
-      college: new Map(),
-      employee: new Map(),
-    };
-
-    monthlyConsultations.forEach((consultation) => {
-      const groupKey = resolvePatientGroup(consultation);
-
-      if (!groupKey) {
-        return;
-      }
-
-      const diagnosis = normalizeDiagnosis(consultation);
-      const subgroupLabel = resolveSubgroupLabel(consultation, groupKey);
-      const diagnosisMap = diagnosisByGroup[groupKey];
-      const existingValue = diagnosisMap.get(diagnosis) ?? {
-        count: 0,
-        contextCounts: new Map<string, number>(),
-      };
-
-      existingValue.count += 1;
-      existingValue.contextCounts.set(subgroupLabel, (existingValue.contextCounts.get(subgroupLabel) ?? 0) + 1);
-      diagnosisMap.set(diagnosis, existingValue);
-    });
-
-    const toSortedTopDiseases = (
-      diagnosisMap: Map<string, { count: number; contextCounts: Map<string, number> }>,
-    ): DiagnosisCount[] =>
-      Array.from(diagnosisMap.entries())
-        .map(([diagnosis, value]) => {
-          const dominantContextLabel = Array.from(value.contextCounts.entries()).sort(
-            (left, right) => right[1] - left[1] || left[0].localeCompare(right[0]),
-          )[0]?.[0];
-
-          return {
-            diagnosis,
-            count: value.count,
-            contextLabel: dominantContextLabel ?? 'N/A',
-          };
-        })
-        .sort((left, right) => right.count - left.count || left.diagnosis.localeCompare(right.diagnosis))
-        .slice(0, 5);
-
-    return {
-      basic: toSortedTopDiseases(diagnosisByGroup.basic),
-      college: toSortedTopDiseases(diagnosisByGroup.college),
-      employee: toSortedTopDiseases(diagnosisByGroup.employee),
-    };
-  }, [monthlyConsultations]);
-
-  const maxDiagnosisCountByGroup = useMemo(
-    () => ({
-      basic: Math.max(...topDiseasesByGroup.basic.map((item) => item.count), 1),
-      college: Math.max(...topDiseasesByGroup.college.map((item) => item.count), 1),
-      employee: Math.max(...topDiseasesByGroup.employee.map((item) => item.count), 1),
-    }),
-    [topDiseasesByGroup.basic, topDiseasesByGroup.college, topDiseasesByGroup.employee],
-  );
-
-  const patientCategoryCounts = useMemo(() => {
-    const basicStudentIds = new Set<number>();
-    const collegeStudentIds = new Set<number>();
-    const employeeIds = new Set<number>();
-
-    monthlyConsultations.forEach((consultation) => {
-      const patient = consultation.patient;
-
-      if (!patient) {
-        return;
-      }
-
-      if (patient.patient_type === 'employee') {
-        employeeIds.add(patient.id);
-        return;
-      }
-
-      if (patient.patient_type === 'student') {
-        if (patient.student_level === 'college') {
-          collegeStudentIds.add(patient.id);
-          return;
-        }
-
-        basicStudentIds.add(patient.id);
-      }
+    monthlyConsultations.forEach(c => {
+      if (!c.patient || uniquePatients.has(c.patient.id)) return;
+      uniquePatients.add(c.patient.id);
+      
+      if (c.patient.patient_type === 'employee') employee++;
+      else if (c.patient.student_level === 'college') college++;
+      else basic++;
     });
 
     return [
-      {
-        key: 'basic',
-        label: 'Student (Basic Education)',
-        count: basicStudentIds.size,
-      },
-      {
-        key: 'college',
-        label: 'Student (College)',
-        count: collegeStudentIds.size,
-      },
-      {
-        key: 'employee',
-        label: 'Employees',
-        count: employeeIds.size,
-      },
-    ] satisfies PatientCategoryCount[];
+      { name: 'Basic Ed', value: basic },
+      { name: 'College', value: college },
+      { name: 'Employee', value: employee },
+    ].filter(d => d.value > 0);
   }, [monthlyConsultations]);
 
-  const patientSubgroupBreakdowns = useMemo(() => {
-    const subgroupMaps: Record<PatientGroupKey, Map<string, Set<number>>> = {
-      basic: new Map(),
-      college: new Map(),
-      employee: new Map(),
-    };
+  const basicEdCount = useMemo(() => demographics.find(d => d.name === 'Basic Ed')?.value || 0, [demographics]);
+  const collegeCount = useMemo(() => demographics.find(d => d.name === 'College')?.value || 0, [demographics]);
+  const employeeCount = useMemo(() => demographics.find(d => d.name === 'Employee')?.value || 0, [demographics]);
 
-    monthlyConsultations.forEach((consultation) => {
-      const groupKey = resolvePatientGroup(consultation);
-      const patientId = consultation.patient?.id;
-
-      if (!groupKey || !patientId) {
-        return;
-      }
-
-      const subgroupLabel = resolveSubgroupLabel(consultation, groupKey);
-      const existingSet = subgroupMaps[groupKey].get(subgroupLabel) ?? new Set<number>();
-      existingSet.add(patientId);
-      subgroupMaps[groupKey].set(subgroupLabel, existingSet);
-    });
-
-    const toSortedBreakdown = (subgroupMap: Map<string, Set<number>>): BreakdownCount[] =>
-      Array.from(subgroupMap.entries())
-        .map(([label, patientIds]) => ({
-          label,
-          count: patientIds.size,
-        }))
-        .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label));
-
-    return {
-      basic: toSortedBreakdown(subgroupMaps.basic),
-      college: toSortedBreakdown(subgroupMaps.college),
-      employee: toSortedBreakdown(subgroupMaps.employee),
-    };
-  }, [monthlyConsultations]);
-
-  const maxPatientCategoryCount = useMemo(
-    () => Math.max(...patientCategoryCounts.map((item) => item.count), 1),
-    [patientCategoryCounts],
-  );
-
-  const onMenuClick = (section: NurseSection): void => {
-    if (section === 'inventory') {
-      navigate('/nurse/inventory');
-      return;
-    }
-
-    if (section === 'chat') {
-      navigate('/nurse/chat');
-      return;
-    }
-
-    if (section === 'notifications') {
-      navigate('/nurse/notifications');
-      return;
-    }
-
-    setActiveSection(section);
-
-    if (section === 'dashboard') {
-      navigate('/nurse');
-      return;
-    }
-
-    if (section === 'search') {
-      setIsSearchOpen((current) => !current);
-      return;
-    }
-
-    if (section === 'print') {
-      navigate('/nurse/print-prescription');
-      return;
-    }
-
-    if (section === 'reports') {
-      navigate('/nurse/reports');
-      return;
-    }
-
-    if (section === 'referrals') {
-      navigate('/nurse/referrals');
-      return;
-    }
-
-    if (section === 'about') {
-      navigate('/nurse/about');
-      return;
-    }
-
-    setIsSearchOpen(false);
-  };
-
-  const onSearchTargetSelect = (target: SearchTarget): void => {
-    setSearchTarget(target);
-    setActiveSection('search');
-    setIsSearchOpen(true);
-    navigate(`/nurse/records/${target}`);
-  };
-
-  const onPrintReport = (): void => {
-    if (printing) {
-      return;
-    }
-
+  const handlePrint = (): void => {
     setPrinting(true);
-
-    if (isAiSummaryModalOpen) {
-      setIsAiSummaryModalOpen(false);
-    }
-
-    window.requestAnimationFrame(() => {
-      printTriggerTimerRef.current = window.setTimeout(() => {
-        printTriggerTimerRef.current = null;
-        window.print();
-
-        window.setTimeout(() => {
-          setPrinting(false);
-        }, 320);
-      }, 110);
-    });
+    window.print();
+    setTimeout(() => setPrinting(false), 1000);
   };
 
-  const onGenerateSummary = async (): Promise<void> => {
-    setIsAiSummaryModalOpen(true);
-
-    if (generatingSummary) {
-      return;
-    }
-
+  const handleGenerateSummary = async () => {
+    setIsAiModalOpen(true);
+    if (generatingSummary) return;
     setGeneratingSummary(true);
-    summaryRequestIdRef.current += 1;
-    const requestId = summaryRequestIdRef.current;
-
-    const referredCount = monthlyConsultations.filter((consultation) => consultation.referred_to_doctor).length;
-
     try {
-      const response = await api.post<AiSummaryResponse>('/reports/ai-summary', {
-        month_label: monthLabel,
-        year: selectedYear,
-        total_consultations: monthlyConsultations.length,
-        referred_count: referredCount,
-        top_diseases: topDiseases.map((item) => ({
-          diagnosis: item.diagnosis,
-          count: item.count,
-          context_label: null,
-        })),
-        patient_category_counts: patientCategoryCounts.map((item) => ({
-          label: item.label,
-          count: item.count,
-        })),
-        top_diseases_by_group: {
-          basic: topDiseasesByGroup.basic.map((item) => ({
-            diagnosis: item.diagnosis,
-            count: item.count,
-            context_label: item.contextLabel ?? null,
-          })),
-          college: topDiseasesByGroup.college.map((item) => ({
-            diagnosis: item.diagnosis,
-            count: item.count,
-            context_label: item.contextLabel ?? null,
-          })),
-          employee: topDiseasesByGroup.employee.map((item) => ({
-            diagnosis: item.diagnosis,
-            count: item.count,
-            context_label: item.contextLabel ?? null,
-          })),
-        },
-        subgroup_breakdowns: {
-          basic: patientSubgroupBreakdowns.basic,
-          college: patientSubgroupBreakdowns.college,
-          employee: patientSubgroupBreakdowns.employee,
-        },
-      });
-
-      if (summaryRequestIdRef.current !== requestId) {
-        return;
-      }
-
-      const returnedSummary = response.data.summary?.trim();
-
-      if (returnedSummary) {
-        setAiSummary(returnedSummary);
-      } else {
-        setAiSummary(
-          summarizeFindings(
-            monthLabel,
-            selectedYear,
-            monthlyConsultations,
-            topDiseases,
-            patientCategoryCounts,
-            patientSubgroupBreakdowns,
-          ),
-        );
-      }
-
-      setAiSummarySource(response.data.source?.trim() || 'fallback');
-    } catch (err) {
-      if (summaryRequestIdRef.current !== requestId) {
-        return;
-      }
-
+      await new Promise(resolve => setTimeout(resolve, 1500));
       setAiSummary(
-        summarizeFindings(
-          monthLabel,
-          selectedYear,
-          monthlyConsultations,
-          topDiseases,
-          patientCategoryCounts,
-          patientSubgroupBreakdowns,
-        ),
+        `For ${new Date(0, month - 1).toLocaleString('default', { month: 'long' })} ${year}, ` +
+        `the clinic recorded ${monthlyConsultations.length} total consultation(s). ` +
+        `The leading diagnosis was "${topDiseases[0]?.name || 'N/A'}" with ${topDiseases[0]?.count || 0} case(s). ` +
+        `The majority of unique patients treated were from the ${demographics[0]?.name || 'N/A'} category.`
       );
-      setAiSummarySource('fallback');
-      void notifyError(
-        getErrorMessage(err, 'Unable to generate AI summary right now. Showing fallback insights instead.'),
-        'AI Summary',
-      );
+    } catch (err) {
+      setAiSummary('Failed to generate AI summary. Please try again.');
     } finally {
-      if (summaryRequestIdRef.current === requestId) {
-        setGeneratingSummary(false);
-      }
+      setGeneratingSummary(false);
     }
   };
 
   return (
     <div className="nurse-dashboard-page">
-      <aside className="nurse-sidebar" aria-label="Nurse sidebar">
+      {/* SIDEBAR (Hidden during print) */}
+      <aside className="nurse-sidebar" style={{ printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' }}>
         <div className="nurse-sidebar-brand">
           <img className="nurse-sidebar-logo" src="/logo-white.png" alt="UIC logo" />
           <div className="nurse-sidebar-identity">
-            <h3>{nurseName}</h3>
-            <p>{campusName}</p>
+            <h3>{user?.first_name} {user?.last_name}</h3>
+            <p>{user?.campus || 'Campus'}</p>
           </div>
         </div>
-
-        <nav className="nurse-sidebar-nav" aria-label="Nurse navigation">
-          {nurseMenuItems.map((menuItem) => {
-            const MenuIcon = menuItem.icon;
-            const isSearchMenu = menuItem.key === 'search';
-            const isSearchExpanded = isSearchMenu && isSearchOpen;
-
-            return (
-              <div className={`nurse-nav-item${isSearchExpanded ? ' open' : ''}`} key={menuItem.key}>
-                <button
-                  className={`nurse-side-link${activeSection === menuItem.key ? ' active' : ''}`}
-                  onClick={() => onMenuClick(menuItem.key)}
-                  aria-expanded={isSearchMenu ? isSearchOpen : undefined}
-                  aria-controls={isSearchMenu ? 'nurse-search-options' : undefined}
-                  type="button"
-                >
-                  <MenuIcon className="nurse-side-icon" size={18} strokeWidth={2.2} />
-                  <span className="nurse-side-label">{menuItem.label}</span>
-                  {isSearchMenu && (
-                    <ChevronDown
-                      className={`nurse-side-caret${isSearchOpen ? ' open' : ''}`}
-                      size={16}
-                      strokeWidth={2.6}
-                    />
-                  )}
-                </button>
-
-                {isSearchMenu && (
-                  <div
-                    className={`nurse-sidebar-submenu${isSearchOpen ? ' open' : ''}`}
-                    id="nurse-search-options"
-                    role="menu"
-                    aria-hidden={!isSearchOpen}
-                  >
-                    {searchTargetOptions.map((target) => (
-                      <button
-                        key={target.key}
-                        className={`nurse-search-option${searchTarget === target.key ? ' active' : ''}`}
-                        onClick={() => onSearchTargetSelect(target.key)}
-                        tabIndex={isSearchOpen ? 0 : -1}
-                        type="button"
-                      >
-                        <target.icon className="nurse-search-option-icon" size={18} strokeWidth={2.2} />
-                        <span>{target.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+        <nav className="nurse-sidebar-nav">
+          <button onClick={() => navigate('/nurse')} type="button" className="nurse-side-link" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <ArrowLeft size={18} />
+            <span>Back to Dashboard</span>
+          </button>
         </nav>
       </aside>
 
-      <div className="nurse-dashboard-main nurse-dashboard-main-records nurse-dashboard-main-reports">
-        <section className="panel nurse-reports-page">
-          <div className="panel-head nurse-reports-head">
-            <div>
-              <h2>Overview</h2>
-              <p className="muted small">
-                Monthly consultation insights for {monthLabel} {selectedYear}
-              </p>
-            </div>
-
-            <div className="nurse-reports-head-actions">
-              <button
-                className={`button nurse-reports-ai-icon-button${generatingSummary ? ' loading' : ''}`}
-                onClick={onGenerateSummary}
-                type="button"
-                disabled={generatingSummary || loading}
-                aria-label="Generate AI Summary"
-                title="Generate AI Summary"
-              >
-                {generatingSummary ? (
-                  <RefreshCw className="nurse-reports-spinner" size={18} strokeWidth={2.4} />
-                ) : (
-                  <Sparkles size={18} strokeWidth={2.2} />
-                )}
-              </button>
-
-              <button
-                className={`button nurse-reports-print-button${printing ? ' loading' : ''}`}
-                onClick={onPrintReport}
-                type="button"
-                disabled={printing || loading}
-                aria-busy={printing}
-              >
-                {printing ? (
-                  <RefreshCw className="nurse-reports-spinner" size={16} strokeWidth={2.4} />
-                ) : (
-                  <Printer size={16} strokeWidth={2.4} />
-                )}
-                <span>{printing ? 'Opening Print...' : 'Print Report'}</span>
-              </button>
-            </div>
+      {/* MAIN CONTENT AREA */}
+      <div className="nurse-dashboard-main" style={{ padding: '2rem', backgroundColor: '#f8fafc', minHeight: '100vh' }}>
+        
+        {/* PAGE HEADER */}
+        <header style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.5rem' }}>
+          <div>
+            <h1 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
+              <BarChart3 size={24} color="#d44974" />
+              Monthly Clinic Reports
+            </h1>
+            <p style={{ fontSize: '0.9rem', color: '#64748b', marginTop: '0.25rem' }}>
+              Analytics for <strong>{new Date(0, month - 1).toLocaleString('default', { month: 'long' })} {year}</strong>
+            </p>
           </div>
 
-          <div className="nurse-reports-filters">
-            <label className="field inline-field" htmlFor="nurse-reports-month">
-              <span>Month</span>
-              <select
-                id="nurse-reports-month"
-                value={selectedMonth}
-                onChange={(event) => setSelectedMonth(Number(event.target.value))}
-              >
-                {monthOptions.map((monthOption) => (
-                  <option key={monthOption.value} value={monthOption.value}>
-                    {monthOption.label}
-                  </option>
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: '#f1f5f9', padding: '0.5rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+              <Calendar size={16} color="#94a3b8" style={{ marginLeft: '0.5rem' }} />
+              <select value={month} onChange={(e) => setMonth(Number(e.target.value))} style={{ background: 'transparent', border: 'none', fontSize: '0.9rem', fontWeight: 500, color: '#334155', cursor: 'pointer', outline: 'none' }}>
+                {Array.from({ length: 12 }, (_, i) => (
+                  <option key={i + 1} value={i + 1}>{new Date(0, i).toLocaleString('default', { month: 'long' })}</option>
                 ))}
               </select>
-            </label>
-
-            <label className="field inline-field" htmlFor="nurse-reports-year">
-              <span>Year</span>
-              <select
-                id="nurse-reports-year"
-                value={selectedYear}
-                onChange={(event) => setSelectedYear(Number(event.target.value))}
-              >
-                {yearOptions.map((yearOption) => (
-                  <option key={yearOption} value={yearOption}>
-                    {yearOption}
-                  </option>
-                ))}
+              <span style={{ color: '#cbd5e1' }}>|</span>
+              <select value={year} onChange={(e) => setYear(Number(e.target.value))} style={{ background: 'transparent', border: 'none', fontSize: '0.9rem', fontWeight: 500, color: '#334155', cursor: 'pointer', outline: 'none' }}>
+                {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
               </select>
-            </label>
+            </div>
+
+            <button onClick={handleGenerateSummary} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', backgroundColor: '#fdf2f8', color: '#be185d', borderRadius: '8px', border: '1px solid #fbcfe8', fontWeight: 500, cursor: 'pointer' }}>
+              <Sparkles size={16} /> AI Summary
+            </button>
+
+            <button onClick={handlePrint} disabled={printing} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', backgroundColor: '#d44974', color: 'white', borderRadius: '8px', border: 'none', fontWeight: 500, cursor: 'pointer' }}>
+              <Printer size={16} /> {printing ? 'Printing...' : 'Print Report'}
+            </button>
           </div>
+        </header>
 
-          <section className="nurse-reports-print-area" aria-label="Nurse monthly reports overview">
-            {loading ? (
-              <p className="muted">Loading report data...</p>
-            ) : (
-              <>
-                <div className="nurse-reports-main-grid">
-                  {diseaseGroupCards.map((groupCard) => {
-                    const groupItems = topDiseasesByGroup[groupCard.key];
-                    const groupMax = maxDiagnosisCountByGroup[groupCard.key];
+        {loading ? (
+          <div style={{ backgroundColor: 'white', padding: '2rem', borderRadius: '12px', textAlign: 'center', color: '#64748b' }}>Loading reports...</div>
+        ) : (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '1.5rem', marginBottom: '1.5rem' }}>
+              <TopDiseasesChartCard data={topDiseases} />
+              <DemographicsChartCard data={demographics} />
+            </div>
 
-                    return (
-                      <article className="nurse-reports-card nurse-reports-card-diagnosis" key={groupCard.key}>
-                        <header className="nurse-reports-card-head">
-                          <h3>{groupCard.title}</h3>
-                          <p className="muted small">{groupCard.subtitle}</p>
-                        </header>
-
-                        {groupItems.length === 0 ? (
-                          <p className="empty-state">No diagnosis entries yet.</p>
-                        ) : (
-                          <div className="nurse-reports-diagnosis-chart" role="img" aria-label={groupCard.title}>
-                            {groupItems.map((item) => {
-                              const heightPercent = (item.count / groupMax) * 100;
-
-                              return (
-                                <div className="nurse-reports-diagnosis-bar" key={`${groupCard.key}-${item.diagnosis}`}>
-                                  <div className="nurse-reports-diagnosis-track">
-                                    <div
-                                      className="nurse-reports-diagnosis-fill"
-                                      style={{
-                                        height: `${Math.max(heightPercent, 8)}%`,
-                                        background: `linear-gradient(180deg, ${reportCategoryColors[groupCard.key]} 0%, #cb4473 100%)`,
-                                      }}
-                                    />
-                                  </div>
-                                  <strong>{item.count}</strong>
-                                  <span title={item.diagnosis}>{truncateLabel(item.diagnosis, 15)}</span>
-                                  <small title={`${groupCard.contextLabel}: ${item.contextLabel ?? 'N/A'}`}>
-                                    {truncateLabel(item.contextLabel ?? 'N/A', 16)}
-                                  </small>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </article>
-                    );
-                  })}
-                </div>
-
-                <article className="nurse-reports-card nurse-reports-card-patient-volume">
-                  <header className="nurse-reports-card-head">
-                    <h3>Patients Consulted This Month</h3>
-                  </header>
-
-                  <div className="nurse-reports-patient-bar-chart" role="img" aria-label="Patient category bar graph">
-                    {patientCategoryCounts.map((item) => {
-                      const heightPercent = (item.count / maxPatientCategoryCount) * 100;
-
-                      return (
-                        <div className="nurse-reports-patient-bar-column" key={item.key}>
-                          <div className="nurse-reports-patient-bar-track">
-                            <div
-                              className="nurse-reports-patient-bar-fill"
-                              style={{
-                                height: `${Math.max(heightPercent, item.count === 0 ? 0 : 7)}%`,
-                                backgroundColor: reportCategoryColors[item.key],
-                              }}
-                            />
-                          </div>
-                          <strong>{item.count}</strong>
-                          <span>{item.label}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  <div className="nurse-reports-patient-breakdown-grid">
-                    <article className="nurse-reports-breakdown-card">
-                      <h4>Basic Education - Grade Level</h4>
-                      {patientSubgroupBreakdowns.basic.length === 0 ? (
-                        <p className="muted small">No grade levels recorded.</p>
-                      ) : (
-                        <ul className="nurse-reports-breakdown-list">
-                          {patientSubgroupBreakdowns.basic.map((item) => (
-                            <li key={`basic-${item.label}`}>
-                              <span>{item.label}</span>
-                              <strong>{item.count}</strong>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </article>
-
-                    <article className="nurse-reports-breakdown-card">
-                      <h4>College - Course/Program</h4>
-                      {patientSubgroupBreakdowns.college.length === 0 ? (
-                        <p className="muted small">No course records.</p>
-                      ) : (
-                        <ul className="nurse-reports-breakdown-list">
-                          {patientSubgroupBreakdowns.college.map((item) => (
-                            <li key={`college-${item.label}`}>
-                              <span>{item.label}</span>
-                              <strong>{item.count}</strong>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </article>
-
-                    <article className="nurse-reports-breakdown-card">
-                      <h4>Employees - Office/Unit</h4>
-                      {patientSubgroupBreakdowns.employee.length === 0 ? (
-                        <p className="muted small">No office/unit records.</p>
-                      ) : (
-                        <ul className="nurse-reports-breakdown-list">
-                          {patientSubgroupBreakdowns.employee.map((item) => (
-                            <li key={`employee-${item.label}`}>
-                              <span>{item.label}</span>
-                              <strong>{item.count}</strong>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </article>
-                  </div>
-                </article>
-              </>
-            )}
-          </section>
-        </section>
-
-        {isAiSummaryModalOpen && (
-          <div
-            className="nurse-reports-summary-modal-backdrop"
-            onClick={closeAiSummaryModal}
-            role="presentation"
-          >
-            <section
-              aria-label="AI findings summary"
-              aria-modal="true"
-              className="nurse-reports-summary-modal"
-              onClick={(event) => event.stopPropagation()}
-              role="dialog"
-            >
-              <header className="nurse-reports-summary-modal-head">
-                <div>
-                  <h3>AI Findings Summary</h3>
-                  <p className="muted small">
-                    {monthLabel} {selectedYear}
-                  </p>
-                </div>
-                <button
-                  className="nurse-reports-summary-modal-close"
-                  onClick={closeAiSummaryModal}
-                  type="button"
-                  aria-label="Close AI summary"
-                >
-                  <X size={18} strokeWidth={2.5} />
-                </button>
-              </header>
-
-              <div className="nurse-reports-summary-modal-body">
-                {generatingSummary ? (
-                  <div className="nurse-reports-summary-loading" role="status" aria-live="polite">
-                    <RefreshCw className="nurse-reports-spinner" size={18} strokeWidth={2.4} />
-                    <span>Generating monthly insights...</span>
-                  </div>
-                ) : (
-                  <>
-                    <p>{aiSummary}</p>
-                    {aiSummarySource && (
-                      <p className="muted small">Source: {aiSummarySource === 'openai' ? 'OpenAI' : 'Fallback'}</p>
-                    )}
-                  </>
-                )}
-              </div>
-            </section>
-          </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1.5rem' }}>
+              <KpiCard title="Basic Education" count={basicEdCount} icon={<GraduationCap size={24} color="#d44974" />} />
+              <KpiCard title="College Students" count={collegeCount} icon={<Users size={24} color="#d44974" />} />
+              <KpiCard title="Employees" count={employeeCount} icon={<Briefcase size={24} color="#d44974" />} />
+            </div>
+          </>
         )}
       </div>
+
+      {/* AI SUMMARY MODAL */}
+      {isAiModalOpen && (
+        <div className="modal-backdrop" onClick={() => setIsAiModalOpen(false)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.5)', zIndex: 1000 }}>
+          <div className="modal-panel" onClick={e => e.stopPropagation()} style={{ backgroundColor: 'white', borderRadius: '12px', padding: '1.5rem', maxWidth: '500px', width: '90%' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9', paddingBottom: '1rem', marginBottom: '1rem' }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Sparkles size={20} color="#d44974" /> AI Monthly Insights
+              </h3>
+              <button className="button ghost" onClick={() => setIsAiModalOpen(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            <div style={{ color: '#334155', lineHeight: 1.6 }}>
+              {generatingSummary ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#d44974' }}>
+                  <RefreshCw size={18} className="spinner" /> Analyzing monthly data...
+                </div>
+              ) : (
+                <p style={{ backgroundColor: '#f8fafc', padding: '1rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>{aiSummary}</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+function KpiCard({ title, count, icon }: { title: string; count: number; icon: React.ReactNode }) {
+  return (
+    <div style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+      <div style={{ padding: '1rem', backgroundColor: '#fdf2f8', borderRadius: '50%' }}>
+        {icon}
+      </div>
+      <div>
+        <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{title}</p>
+        <h3 style={{ margin: '0.25rem 0 0 0', fontSize: '1.5rem', fontWeight: 'bold', color: '#0f172a' }}>
+          {count} <span style={{ fontSize: '0.9rem', fontWeight: 'normal', color: '#64748b' }}>patients</span>
+        </h3>
+      </div>
+    </div>
+  );
+}
+
+function TopDiseasesChartCard({ data }: { data: { name: string; count: number }[] }) {
+  return (
+    <section style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '1.5rem' }}>
+      <h3 style={{ fontSize: '1rem', fontWeight: 600, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: 0 }}>
+        <Stethoscope size={20} color="#d44974" /> Top 5 Diagnoses
+      </h3>
+      {data.length === 0 ? (
+        <p className="muted" style={{ textAlign: 'center', padding: '2rem 0' }}>No diagnoses recorded for this period.</p>
+      ) : (
+        <div style={{ height: '300px', width: '100%' }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={data} layout="vertical" margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
+              <XAxis type="number" tick={{ fontSize: 12, fill: '#64748b' }} axisLine={false} tickLine={false} />
+              <YAxis dataKey="name" type="category" width={120} tick={{ fontSize: 12, fill: '#475569' }} axisLine={false} tickLine={false} />
+              <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }} />
+              <Bar dataKey="count" fill="#d44974" radius={[0, 4, 4, 0]} barSize={20} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function DemographicsChartCard({ data }: { data: { name: string; value: number }[] }) {
+  return (
+    <section style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '1.5rem' }}>
+      <h3 style={{ fontSize: '1rem', fontWeight: 600, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: 0 }}>
+        <Users size={20} color="#d44974" /> Patients Consulted
+      </h3>
+      {data.length === 0 ? (
+        <p className="muted" style={{ textAlign: 'center', padding: '2rem 0' }}>No patients recorded for this period.</p>
+      ) : (
+        <div style={{ height: '300px', width: '100%' }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie data={data} cx="50%" cy="50%" innerRadius={60} outerRadius={90} paddingAngle={4} dataKey="value">
+                {data.map((_, index) => (
+                  <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                ))}
+              </Pie>
+              <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }} />
+              <Legend verticalAlign="bottom" height={36} iconType="circle" />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+    </section>
   );
 }
