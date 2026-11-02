@@ -41,6 +41,7 @@ Route::prefix('v1')->group(function (): void {
         // ============================================================
         Route::middleware('role:student,employee')->group(function (): void {
             Route::get('/patients/me', [PatientController::class, 'me']);
+            Route::patch('/patients/me', [PatientController::class, 'updateMe']); // <-- NEW ROUTE
         });
 
         // ============================================================
@@ -94,7 +95,7 @@ Route::prefix('v1')->group(function (): void {
         Route::middleware('role:coordinator')->group(function (): void {
             Route::get('/audit-logs', [AuditLogController::class, 'index']);
             Route::get('/reports/command-center', [ReportController::class, 'clinicCommandCenter']);
-            Route::get('/reports/campus-detail/{campusCode}', [ReportController::class, 'campusDetail']); // <-- NEW ROUTE
+            Route::get('/reports/campus-detail/{campusCode}', [ReportController::class, 'campusDetail']);
             Route::get('/users', [UserController::class, 'index'])->middleware('throttle:30,1');
             Route::patch('/users/{user}/role', [UserController::class, 'updateRole'])->whereNumber('user')->middleware('throttle:10,1');
             Route::post('/users', [UserController::class, 'store'])->middleware('throttle:10,1');

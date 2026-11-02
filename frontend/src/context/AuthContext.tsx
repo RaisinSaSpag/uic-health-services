@@ -17,7 +17,7 @@ interface AuthContextValue {
   user: AuthUser | null;
   token: string | null;
   isInitializing: boolean;
-  signIn: (token: string, user: AuthUser) => void;
+  signIn: (token: string, user: AuthUser) => Promise<void>;
   signOut: () => void;
   refreshProfile: () => Promise<void>;
   hasRole: (roles: RoleName[]) => boolean;
@@ -39,21 +39,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     try {
-      // Tell the backend we are logging out (for audit logs / token invalidation)
       await api.post('/auth/logout');
     } catch (err) {
-      // Ignore errors — we are clearing the client state regardless
+      // Ignore errors
     }
-    
-    // Clear the client session
     clearSession();
     setToken(null);
     setUser(null);
   }, []);
 
-  const signIn = useCallback((nextToken: string, nextUser: AuthUser) => {
+  const signIn = useCallback(async (nextToken: string, nextUser: AuthUser) => {
     const safeUser = sanitizeUser(nextUser);
-
     storeSession(nextToken, safeUser);
     setToken(nextToken);
     setUser(safeUser);
@@ -68,7 +64,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       storeSession(currentToken, safeUser);
       setToken(currentToken);
     }
-
     setUser(safeUser);
   }, []);
 
@@ -86,12 +81,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     refreshProfile()
       .catch(() => {
-        signOut();
+        // If the profile fetch fails (e.g., 401), clear the session
+        clearSession();
+        setToken(null);
+        setUser(null);
       })
       .finally(() => {
         setIsInitializing(false);
       });
-  }, [refreshProfile, signOut]);
+    
+  // 🚨 FIX: Only run this once on mount to prevent infinite loops
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const hasRole = useCallback(
     (roles: RoleName[]) => {

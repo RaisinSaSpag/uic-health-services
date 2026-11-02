@@ -47,6 +47,29 @@ class PatientController extends Controller
     }
 
     /**
+     * Update the authenticated patient's own profile.
+     */
+    public function updateMe(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'address' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'contact_number' => ['sometimes', 'nullable', 'string', 'max:30'],
+            'emergency_contact_name' => ['sometimes', 'nullable', 'string', 'max:120'],
+            'emergency_contact_number' => ['sometimes', 'nullable', 'string', 'max:30'],
+            'emergency_contact_relationship' => ['sometimes', 'nullable', 'string', 'max:100'],
+            'allergies' => ['sometimes', 'nullable', 'string', 'max:2000'],
+            'existing_medical_condition' => ['sometimes', 'nullable', 'string', 'max:2000'],
+        ]);
+
+        try {
+            $patient = $this->patientService->updateOwnProfile($request->user(), $validated);
+            return response()->json($patient);
+        } catch (RuntimeException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
+    }
+
+    /**
      * Display the specified patient.
      */
     public function show(Patient $patient): JsonResponse

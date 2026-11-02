@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext';
 
 export function ForcePasswordChangePage() {
   const navigate = useNavigate();
-  const { user, signOut } = useAuth();
+  const { user, refreshUser } = useAuth(); // Assuming your AuthContext has a refreshUser method
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -18,8 +18,8 @@ export function ForcePasswordChangePage() {
       notifyError('Passwords do not match.');
       return;
     }
-    if (newPassword.length < 6) {
-      notifyError('Password must be at least 6 characters.');
+    if (newPassword.length < 8) {
+      notifyError('Password must be at least 8 characters.');
       return;
     }
 
@@ -30,9 +30,16 @@ export function ForcePasswordChangePage() {
         new_password_confirmation: confirmPassword,
       });
       
-      notifySuccess('Password updated successfully! Please log in again.');
-      signOut();
-      navigate('/login');
+      notifySuccess('Password updated successfully!');
+      
+      // Instead of logging out, we refresh the user state.
+      // This updates `must_change_password` to false and lets the AppShell render the portal.
+      if (refreshUser) {
+        await refreshUser();
+      }
+      
+      // Navigate to the dashboard/portal
+      navigate('/');
     } catch (err) {
       notifyError('Failed to update password. Please try again.');
     } finally {
@@ -54,10 +61,10 @@ export function ForcePasswordChangePage() {
             <input
               type="password"
               required
-              minLength={6}
+              minLength={8}
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="Enter new password (min 6 chars)"
+              placeholder="Enter new password (min 8 chars)"
             />
           </label>
 
@@ -66,7 +73,7 @@ export function ForcePasswordChangePage() {
             <input
               type="password"
               required
-              minLength={6}
+              minLength={8}
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               placeholder="Re-enter new password"
