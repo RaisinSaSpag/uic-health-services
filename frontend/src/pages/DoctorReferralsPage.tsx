@@ -6,7 +6,8 @@ import {
   Info, 
   MessageSquare, 
   ArrowLeft,
-  Video
+  Video,
+  Plus
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { confirmAction, notifyError, notifySuccess } from '../lib/alerts';
@@ -14,7 +15,7 @@ import { formatDateTime, userDisplayName } from '../lib/format';
 import { getErrorMessage } from '../lib/http';
 import { useAuth } from '../context/AuthContext';
 import { StatusBadge } from '../components/StatusBadge';
-import type { PaginatedResponse, Referral } from '../types/hsms';
+import type { PaginatedResponse, Referral, Medicine } from '../types/hsms';
 
 type DoctorSection = 'dashboard' | 'referrals' | 'about' | 'chat' | 'notifications';
 
@@ -76,6 +77,10 @@ export function DoctorReferralsPage() {
   const [prescriptionText, setPrescriptionText] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // Medicines Catalog State
+  const [medicines, setMedicines] = useState<Medicine[]>([]);
+  const [selectedMedicineId, setSelectedMedicineId] = useState<string>('');
+
   const routeReferralId = useMemo(() => parseReferralId(rawReferralId), [rawReferralId]);
   const isDetailMode = routeReferralId !== null;
 
@@ -112,13 +117,19 @@ export function DoctorReferralsPage() {
       setTreatmentPlan(response.data.treatment_plan ?? '');
       setDoctorRemarks(response.data.doctor_remarks ?? '');
       setPrescriptionText(response.data.prescription ?? '');
+
+      // Load Medicines Catalog if not already loaded
+      if (medicines.length === 0) {
+        const medRes = await api.get<PaginatedResponse<Medicine>>('/medicines', { params: { per_page: 100 } });
+        setMedicines(medRes.data.data);
+      }
     } catch (err) {
       void notifyError(getErrorMessage(err, 'Unable to load selected referral.'), 'Load Failed');
       navigate('/doctor/referrals');
     } finally {
       setLoadingDetail(false);
     }
-  }, [navigate, routeReferralId]);
+  }, [navigate, routeReferralId, medicines.length]);
 
   useEffect(() => {
     if (isDetailMode) {
@@ -150,6 +161,20 @@ export function DoctorReferralsPage() {
     if (section === 'dashboard') { navigate('/doctor'); return; }
     if (section === 'chat') { navigate('/doctor/chat'); return; }
     if (section === 'about') { navigate('/doctor/about'); }
+  };
+
+  const handleAddMedicineToPrescription = () => {
+    if (!selectedMedicineId) return;
+    const med = medicines.find(m => m.id === Number(selectedMedicineId));
+    if (!med) return;
+    
+    // Append to the prescription text with a newline if there is already text
+    const newText = prescriptionText.trim() 
+      ? `${prescriptionText.trim()}\n- ${med.name}` 
+      : `- ${med.name}`;
+      
+    setPrescriptionText(newText);
+    setSelectedMedicineId('');
   };
 
   const updateReferral = async (action: 'in_progress' | 'complete'): Promise<void> => {
@@ -415,19 +440,39 @@ export function DoctorReferralsPage() {
                       />
                     </label>
 
-                    <label className="field full-width" style={{ marginTop: '1rem' }}>
+                    <div className="field full-width" style={{ marginTop: '1rem' }}>
                       <span>Prescription (Optional)</span>
+                      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                        <select 
+                          value={selectedMedicineId} 
+                          onChange={(e) => setSelectedMedicineId(e.target.value)}
+                          disabled={isCompleted || saving}
+                          style={{ flex: 1, padding: '0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                        >
+                          <option value="">-- Select a medicine to add --</option>
+                          {medicines.map(m => (
+                            <option key={m.id} value={m.id}>{m.name} ({m.category})</option>
+                          ))}
+                        </select>
+                        <button 
+                          type="button" 
+                          className="button secondary" 
+                          onClick={handleAddMedicineToPrescription}
+                          disabled={!selectedMedicineId || isCompleted || saving}
+                          style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+                        >
+                          <Plus size={16} /> Add
+                        </button>
+                      </div>
+                      
                       <textarea
                         rows={4}
                         value={prescriptionText}
                         onChange={(e) => setPrescriptionText(e.target.value)}
-                        placeholder="E.g.,&#10;- Paracetamol 500mg — 1 tablet every 6 hours as needed for fever&#10;- Amoxicillin 500mg — 1 capsule 3x daily for 7 days"
+                        placeholder="Selected medicines will appear here. You can add dosage instructions."
                         disabled={isCompleted || saving}
                       />
-                      <small className="muted" style={{ display: 'block', marginTop: '0.25rem' }}>
-                        Type the prescription as you would write it. Multiple medicines can be listed on separate lines.
-                      </small>
-                    </label>
+                    </div>
 
                     <div className="referral-actions" style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
                       {canSetInProgress && (
