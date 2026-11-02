@@ -18,13 +18,13 @@ import {
   Stethoscope,
   Users,
   AlertCircle,
-  X,
   type LucideIcon,
 } from 'lucide-react';
 import { StatusBadge } from '../components/StatusBadge';
+import { QuickInjuryModal } from '../components/QuickInjuryModal'; // <-- NEW IMPORT
 import { useAuth } from '../context/AuthContext';
 import { api } from '../lib/api';
-import { notifyError, notifySuccess } from '../lib/alerts';
+import { notifyError } from '../lib/alerts';
 import { formatDateTime, userDisplayName } from '../lib/format';
 import { getErrorMessage } from '../lib/http';
 import type { Consultation, PaginatedResponse } from '../types/hsms';
@@ -103,20 +103,8 @@ export function NurseQueuePage() {
   const [searchTarget, setSearchTarget] = useState<SearchTarget>('student');
   const [loading, setLoading] = useState(true);
 
-  // 🚨 Quick Injury Log Modal State
+  // Quick Injury Log Modal State (Simplified)
   const [isInjuryModalOpen, setIsInjuryModalOpen] = useState(false);
-  const [injurySearchTerm, setInjurySearchTerm] = useState('');
-  const [injurySearchResults, setInjurySearchResults] = useState<any[]>([]);
-  const [injurySearching, setInjurySearching] = useState(false);
-  const [selectedPatient, setSelectedPatient] = useState<any | null>(null);
-  const [injuryForm, setInjuryForm] = useState({
-    first_name: '',
-    last_name: '',
-    patient_category: 'college',
-    campus_id: '',
-    chief_complaint: '',
-  });
-  const [injurySubmitting, setInjurySubmitting] = useState(false);
 
   const nurseName = useMemo(() => userDisplayName(user), [user]);
   const campusName = useMemo(() => user?.campus ?? 'Campus not assigned', [user]);
@@ -236,72 +224,6 @@ export function NurseQueuePage() {
     navigate(`/nurse/records/${target}`);
   };
 
-  // Search patients for Quick Injury Log
-  const searchPatientsForInjury = async (term: string) => {
-    setInjurySearchTerm(term);
-    if (term.length < 2) {
-      setInjurySearchResults([]);
-      return;
-    }
-    setInjurySearching(true);
-    try {
-      const res = await api.get('/patients/search', { params: { q: term } });
-      setInjurySearchResults(res.data);
-    } catch {
-      setInjurySearchResults([]);
-    } finally {
-      setInjurySearching(false);
-    }
-  };
-
-  const resetInjuryModal = () => {
-    setIsInjuryModalOpen(false);
-    setInjurySearchTerm('');
-    setInjurySearchResults([]);
-    setSelectedPatient(null);
-    setInjuryForm({ first_name: '', last_name: '', patient_category: 'college', campus_id: '', chief_complaint: '' });
-  };
-
-  const submitInjuryLog = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!injuryForm.chief_complaint) {
-      void notifyError('Please provide a chief complaint.', 'Missing Details');
-      return;
-    }
-
-    if (!selectedPatient && (!injuryForm.first_name || !injuryForm.last_name || !injuryForm.campus_id)) {
-      void notifyError('Please select a patient or fill in all new patient fields.', 'Missing Details');
-      return;
-    }
-
-    setInjurySubmitting(true);
-    try {
-      const payload: any = {
-        chief_complaint: injuryForm.chief_complaint,
-      };
-
-      if (selectedPatient) {
-        payload.patient_id = selectedPatient.id;
-      } else {
-        payload.first_name = injuryForm.first_name;
-        payload.last_name = injuryForm.last_name;
-        payload.patient_category = injuryForm.patient_category;
-        payload.campus_id = Number(injuryForm.campus_id);
-      }
-
-      const response = await api.post('/patients/quick-injury', payload);
-      void notifySuccess('Injury logged successfully.', 'Success');
-      resetInjuryModal();
-      void loadDashboard();
-      navigate(`/nurse/patients/${response.data.patient_id}`);
-    } catch (err) {
-      void notifyError(getErrorMessage(err, 'Unable to log injury.'), 'Failed');
-    } finally {
-      setInjurySubmitting(false);
-    }
-  };
-
   return (
     <div className="nurse-dashboard-page">
       <aside className="nurse-sidebar" aria-label="Nurse sidebar">
@@ -378,7 +300,6 @@ export function NurseQueuePage() {
                 + Register Walk-In
               </button>
               
-              {/* 🚨 Quick Injury Log Button */}
               <button 
                 className="button" 
                 style={{ background: '#dc2626', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem' }} 
@@ -516,7 +437,13 @@ export function NurseQueuePage() {
 
                 <tbody>
                   {filteredRecentConsultations.map((consultation) => (
-                    <tr key={consultation.id}>
+                    <tr 
+                      key={consultation.id}
+                      onClick={() => navigate(`/nurse/patients/${consultation.patient_id}`)}
+                      style={{ cursor: 'pointer', transition: 'background-color 0.2s' }}
+                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'}
+                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                    >
                       <td>{userDisplayName(consultation.patient?.user)}</td>
                       <td>{normalizeText(consultation.consultation_type)}</td>
                       <td>{consultationFlowLabel(consultation)}</td>
@@ -534,169 +461,12 @@ export function NurseQueuePage() {
         </section>
       </div>
 
-      {/* 🚨 QUICK INJURY LOG MODAL (Option C) */}
-      {isInjuryModalOpen && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0, 0, 0, 0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-          }}
-          onClick={() => !injurySubmitting && resetInjuryModal()}
-        >
-          <div
-            style={{
-              background: 'white',
-              borderRadius: '12px',
-              padding: '2rem',
-              maxWidth: '550px',
-              width: '90%',
-              maxHeight: '90vh',
-              overflowY: 'auto',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h2 style={{ margin: 0, color: '#dc2626', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <AlertCircle size={24} />
-                Quick Injury Log
-              </h2>
-              <button
-                onClick={resetInjuryModal}
-                disabled={injurySubmitting}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0.5rem' }}
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <form onSubmit={submitInjuryLog} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              
-              {/* 1. SEARCH EXISTING PATIENT */}
-              {!selectedPatient && (
-                <div style={{ background: '#f9f9f9', padding: '1rem', borderRadius: '8px', border: '1px solid #eee' }}>
-                  <label className="field">
-                    <span>1. Search Existing Patient (Name / ID)</span>
-                    <input
-                      placeholder="Type 2+ characters to search..."
-                      value={injurySearchTerm}
-                      onChange={(e) => void searchPatientsForInjury(e.target.value)}
-                    />
-                  </label>
-                  
-                  {injurySearching && <p className="muted small">Searching...</p>}
-                  
-                  {injurySearchResults.length > 0 && (
-                    <ul style={{ listStyle: 'none', padding: 0, margin: '0.5rem 0 0 0' }}>
-                      {injurySearchResults.map((p) => (
-                        <li key={p.id} style={{ padding: '0.5rem', borderBottom: '1px solid #eee', cursor: 'pointer', background: 'white', borderRadius: '4px', marginBottom: '0.25rem' }} onClick={() => setSelectedPatient(p)}>
-                          <strong>{userDisplayName(p.user)}</strong> <span className="muted small">({p.patient_number})</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-
-                  {injurySearchTerm.length >= 2 && !injurySearching && injurySearchResults.length === 0 && (
-                    <p className="muted small" style={{ marginTop: '0.5rem' }}>No patient found. Fill out the form below to register them as new.</p>
-                  )}
-                </div>
-              )}
-
-              {/* 2. SELECTED PATIENT CONFIRMATION */}
-              {selectedPatient && (
-                <div style={{ background: '#e8f5e9', padding: '1rem', borderRadius: '8px', border: '1px solid #c8e6c9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <strong style={{ color: '#2e7d32' }}>✓ Logging injury for existing patient</strong>
-                    <p style={{ margin: 0 }}>{userDisplayName(selectedPatient.user)} ({selectedPatient.patient_number})</p>
-                  </div>
-                  <button type="button" onClick={() => setSelectedPatient(null)} className="button ghost" style={{ color: '#c62828' }}>
-                    Change
-                  </button>
-                </div>
-              )}
-
-              {/* 3. NEW PATIENT FIELDS (Only shown if no patient selected) */}
-              {!selectedPatient && (
-                <>
-                  <p className="muted small" style={{ margin: 0 }}>2. Or register as new patient:</p>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                    <label className="field">
-                      <span>First Name *</span>
-                      <input
-                        value={injuryForm.first_name}
-                        onChange={(e) => setInjuryForm({ ...injuryForm, first_name: e.target.value })}
-                      />
-                    </label>
-                    <label className="field">
-                      <span>Last Name *</span>
-                      <input
-                        value={injuryForm.last_name}
-                        onChange={(e) => setInjuryForm({ ...injuryForm, last_name: e.target.value })}
-                      />
-                    </label>
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                    <label className="field">
-                      <span>Category *</span>
-                      <select
-                        value={injuryForm.patient_category}
-                        onChange={(e) => setInjuryForm({ ...injuryForm, patient_category: e.target.value })}
-                      >
-                        <option value="grade_school">Grade School</option>
-                        <option value="high_school">High School</option>
-                        <option value="college">College</option>
-                        <option value="employee">Employee</option>
-                      </select>
-                    </label>
-                    <label className="field">
-                      <span>Campus *</span>
-                      <select
-                        value={injuryForm.campus_id}
-                        onChange={(e) => setInjuryForm({ ...injuryForm, campus_id: e.target.value })}
-                      >
-                        <option value="">Select campus</option>
-                        <option value="1">Main Campus</option>
-                        <option value="2">Father Selga Campus</option>
-                        <option value="3">Bonifacio Campus</option>
-                        <option value="4">Bajada Grade School</option>
-                        <option value="5">Bajada Junior High</option>
-                        <option value="6">Bajada Senior High</option>
-                      </select>
-                    </label>
-                  </div>
-                </>
-              )}
-
-              {/* 4. CHIEF COMPLAINT (Always shown) */}
-              <label className="field">
-                <span>Injury / Chief Complaint *</span>
-                <textarea
-                  required
-                  rows={3}
-                  value={injuryForm.chief_complaint}
-                  onChange={(e) => setInjuryForm({ ...injuryForm, chief_complaint: e.target.value })}
-                  placeholder="E.g., Twisted ankle during PE class..."
-                />
-              </label>
-
-              {/* 5. SUBMIT */}
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '1rem' }}>
-                <button type="button" className="button secondary" onClick={resetInjuryModal} disabled={injurySubmitting}>
-                  Cancel
-                </button>
-                <button type="submit" className="button" style={{ background: '#dc2626', color: 'white' }} disabled={injurySubmitting}>
-                  {injurySubmitting ? 'Logging...' : 'Log Injury'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* Extracted Quick Injury Modal */}
+      <QuickInjuryModal 
+        isOpen={isInjuryModalOpen} 
+        onClose={() => setIsInjuryModalOpen(false)} 
+        onSuccess={() => void loadDashboard()} 
+      />
     </div>
   );
 }
