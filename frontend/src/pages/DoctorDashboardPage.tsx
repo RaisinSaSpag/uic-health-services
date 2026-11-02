@@ -191,8 +191,8 @@ export function DoctorDashboardPage() {
   };
 
   return (
-    <div className="nurse-dashboard-page">
-      <aside className="nurse-sidebar" aria-label="Doctor sidebar">
+    <div className="nurse-dashboard-page" style={{ minHeight: '100vh', display: 'flex' }}>
+      <aside className="nurse-sidebar" aria-label="Doctor sidebar" style={{ minHeight: '100vh' }}>
         <div className="nurse-sidebar-brand">
           <img className="nurse-sidebar-logo" src="/logo-white.png" alt="UIC logo" />
           <div className="nurse-sidebar-identity">
@@ -221,7 +221,7 @@ export function DoctorDashboardPage() {
         </nav>
       </aside>
 
-      <div className="nurse-dashboard-main">
+      <div className="nurse-dashboard-main" style={{ flex: 1, minHeight: '100vh' }}>
         <section className="panel">
           <div className="panel-head nurse-dashboard-head">
             <div>
@@ -339,4 +339,3 @@ export function DoctorDashboardPage() {
     </div>
   );
 }
-
