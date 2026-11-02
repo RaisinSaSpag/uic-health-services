@@ -61,14 +61,12 @@ class ReportController extends Controller
         $campuses = Campus::all();
         $reportData = [];
 
-        // Issue 19 Fix: Pre-fetch all stock totals in one query to avoid N+1 loops
         $stockTotals = DB::table('medicine_stock_in')
             ->select('campus_id', DB::raw('SUM(quantity) as total_stock'))
             ->groupBy('campus_id')
             ->pluck('total_stock', 'campus_id');
 
         foreach ($campuses as $campus) {
-            // 1. Consultations (Walk-ins, Scheduled, Telemed)
             $consultationsQuery = Consultation::whereHas('patient', function ($q) use ($campus) {
                 $q->where('campus_id', $campus->id);
             })->whereMonth('created_at', $month)->whereYear('created_at', $year);
@@ -76,7 +74,6 @@ class ReportController extends Controller
             $totalConsultations = (clone $consultationsQuery)->count();
             $totalTelemed = (clone $consultationsQuery)->where('is_telemed', true)->count();
             
-            // Issue 19 Fix: Explicitly check for non-null, non-'none' statuses
             $totalReferrals = (clone $consultationsQuery)
                 ->whereNotNull('referral_status')
                 ->where('referral_status', '!=', 'none')
@@ -84,17 +81,14 @@ class ReportController extends Controller
                 
             $totalInjuries = (clone $consultationsQuery)->where('consultation_type', 'injury')->count();
 
-            // 2. Patient Demographics
             $patientCategories = Patient::where('campus_id', $campus->id)
                 ->selectRaw('patient_category, count(*) as count')
                 ->groupBy('patient_category')
                 ->pluck('count', 'patient_category')
                 ->toArray();
 
-            // 3. Inventory Snapshot (Optimized)
             $totalStockAvailable = (int) ($stockTotals[$campus->id] ?? 0);
             
-            // For simplicity, we keep the low-stock query but make it a count
             $lowStockItems = DB::table('medicine_stock_in')
                 ->where('campus_id', $campus->id)
                 ->where('quantity', '<=', 50)
@@ -106,7 +100,6 @@ class ReportController extends Controller
                 ->where('expiration_date', '<=', now()->addDays(30)->format('Y-m-d'))
                 ->count();
 
-            // 4. Top Diseases
             $topDiseases = (clone $consultationsQuery)
                 ->whereNotNull('diagnosis')
                 ->selectRaw('diagnosis, count(*) as count')
@@ -138,6 +131,68 @@ class ReportController extends Controller
         return response()->json([
             'period' => ['month' => $month, 'year' => $year],
             'campuses' => $reportData,
+        ]);
+    }
+
+    /**
+     * Detailed report for a specific campus.
+     */
+    public function campusDetail(Request $request, string $campusCode): JsonResponse
+    {
+        $validated = $request->validate([
+            'month' => ['nullable', 'integer', 'min:1', 'max:12'],
+            'year' => ['nullable', 'integer', 'min:2020'],
+        ]);
+
+        $month = $validated['month'] ?? now()->month;
+        $year = $validated['year'] ?? now()->year;
+
+        $campus = Campus::where('code', $campusCode)->firstOrFail();
+
+        // 1. Base query for this campus
+        $consultationsQuery = Consultation::whereHas('patient', function ($q) use ($campus) {
+            $q->where('campus_id', $campus->id);
+        })->whereMonth('created_at', $month)->whereYear('created_at', $year);
+
+        // 2. Top Diagnoses
+        $topDiseases = (clone $consultationsQuery)
+            ->whereNotNull('diagnosis')
+            ->selectRaw('diagnosis, count(*) as count')
+            ->groupBy('diagnosis')
+            ->orderByDesc('count')
+            ->take(5)
+            ->get();
+
+        // 3. Demographics
+        $demographics = Patient::where('campus_id', $campus->id)
+            ->selectRaw('patient_category, count(*) as count')
+            ->groupBy('patient_category')
+            ->pluck('count', 'patient_category')
+            ->toArray();
+
+        // 4. Recent Consultations (for the table)
+        $recentConsultations = (clone $consultationsQuery)
+            ->with(['patient.user', 'medicalRecord'])
+            ->orderByDesc('created_at')
+            ->take(10)
+            ->get()
+            ->map(function ($c) {
+                return [
+                    'id' => $c->id,
+                    'patient_name' => $c->patient?->user ? $c->patient->user->first_name . ' ' . $c->patient->user->last_name : 'Unknown',
+                    'date' => $c->created_at->format('M d, Y'),
+                    'type' => $c->consultation_type,
+                    'diagnosis' => $c->medicalRecord?->final_diagnosis ?? $c->diagnosis ?? 'N/A',
+                    'status' => $c->status,
+                ];
+            });
+
+        return response()->json([
+            'campus_name' => $campus->name,
+            'campus_code' => $campus->code,
+            'demographics' => $demographics,
+            'top_diseases' => $topDiseases,
+            'recent_consultations' => $recentConsultations,
         ]);
     }
 }

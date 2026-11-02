@@ -27,6 +27,8 @@ import { NurseInventoryAboutPage } from './pages/NurseInventoryAboutPage';
 import { NurseInventoryReportsPage } from './pages/NurseInventoryReportsPage';
 import { NurseWalkInRegistrationPage } from './pages/NurseWalkInRegistrationPage';
 import { CoordinatorDashboardPage } from './pages/CoordinatorDashboardPage';
+import { CoordinatorUsersPage } from './pages/CoordinatorUsersPage';
+import { CoordinatorCampusReportPage } from './pages/CoordinatorCampusReportPage'; // <-- NEW IMPORT
 import { ForcePasswordChangePage } from './pages/ForcePasswordChangePage';
 import { PatientPortalPage } from './pages/PatientPortalPage';
 import { useAuth } from './context/AuthContext';
@@ -96,6 +98,8 @@ function App() {
 
           {/* ============ COORDINATOR MODULE ============ */}
           <Route path="coordinator" element={<RoleRoute roles={['coordinator']}><CoordinatorDashboardPage /></RoleRoute>} />
+          <Route path="coordinator/users" element={<RoleRoute roles={['coordinator']}><CoordinatorUsersPage /></RoleRoute>} />
+          <Route path="coordinator/campus/:campusCode" element={<RoleRoute roles={['coordinator']}><CoordinatorCampusReportPage /></RoleRoute>} /> {/* <-- NEW ROUTE */}
           <Route path="coordinator/audit-logs" element={<RoleRoute roles={['coordinator']}><CoordinatorAuditPage /></RoleRoute>} />
           <Route path="coordinator/chat" element={<RoleRoute roles={['coordinator']}><ChatPage /></RoleRoute>} />
           <Route path="coordinator/notifications" element={<RoleRoute roles={['coordinator']}><NotificationPage /></RoleRoute>} />
