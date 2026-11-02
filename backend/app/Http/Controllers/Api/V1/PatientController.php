@@ -72,6 +72,8 @@ class PatientController extends Controller
             'year_level' => ['nullable', 'string', 'max:255'],
             'section' => ['nullable', 'string', 'max:255'],
             'remarks' => ['nullable', 'string', 'max:2000'],
+        ], [
+            'email.unique' => 'A patient with this email already exists. Please search for their existing record instead.',
         ]);
 
         $roleName = $validated['patient_type'] === 'employee' ? 'employee' : 'student';
