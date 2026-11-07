@@ -13,6 +13,7 @@ class Consultation extends Model
 
     protected $fillable = [
         'patient_id',
+        'patient_enrollment_id', // <-- ADDED
         'nurse_id',
         'consultation_type',
         'status',
@@ -55,6 +56,11 @@ class Consultation extends Model
     public function patient(): BelongsTo
     {
         return $this->belongsTo(Patient::class);
+    }
+
+    public function patientEnrollment(): BelongsTo
+    {
+        return $this->belongsTo(PatientEnrollment::class);
     }
 
     public function nurse(): BelongsTo

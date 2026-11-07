@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\V1\MedicineController;
 use App\Http\Controllers\Api\V1\MessageController;
 use App\Http\Controllers\Api\V1\NotificationController;
 use App\Http\Controllers\Api\V1\PatientController;
+use App\Http\Controllers\Api\V1\PatientEnrollmentController;
 use App\Http\Controllers\Api\V1\PrescriptionController;
 use App\Http\Controllers\Api\V1\ReferralController;
 use App\Http\Controllers\Api\V1\ReportController;
@@ -50,7 +51,14 @@ Route::prefix('v1')->group(function (): void {
         // ============================================================
         Route::middleware('role:nurse,coordinator')->group(function (): void {
             Route::get('/patients', [PatientController::class, 'index']);
+            Route::get('/patients/identify', [PatientController::class, 'identify']);
             Route::get('/patients/search', [PatientController::class, 'search']);
+            
+            // Enrollment Management
+            Route::get('/patients/{patient}/enrollments', [PatientEnrollmentController::class, 'index']);
+            Route::post('/patients/{patient}/enrollments/roll-up', [PatientEnrollmentController::class, 'rollUp']);
+            Route::patch('/patients/{patient}/enrollments/{enrollment}', [PatientEnrollmentController::class, 'correct'])->whereNumber('enrollment');
+
             Route::get('/patients/{patient}', [PatientController::class, 'show'])->whereNumber('patient');
             Route::post('/patients', [PatientController::class, 'walkIn']);
             Route::post('/patients/quick-injury', [PatientController::class, 'quickInjuryLog']);
@@ -115,18 +123,18 @@ Route::prefix('v1')->group(function (): void {
         });
 
         // ============================================================
-        // Medicines Catalog — READ (Nurses + Coordinators)
+        // Medicines Catalog — READ (Nurses + Coordinators + Doctors)
         // ============================================================
-        Route::middleware('role:nurse,coordinator')->group(function (): void {
+        Route::middleware('role:nurse,coordinator,doctor')->group(function (): void {
             Route::get('/medicines', [MedicineController::class, 'index']);
             Route::get('/medicines/stock-out', [MedicineController::class, 'stockOut']);
             Route::get('/medicines/{medicine}', [MedicineController::class, 'show']);
         });
 
         // ============================================================
-        // Medicines Catalog — WRITE (Coordinators only)
+        // Medicines Catalog — WRITE (Nurses + Coordinators)
         // ============================================================
-        Route::middleware('role:coordinator')->group(function (): void {
+        Route::middleware('role:nurse,coordinator')->group(function (): void {
             Route::post('/medicines', [MedicineController::class, 'store']);
             Route::patch('/medicines/{medicine}', [MedicineController::class, 'update']);
             Route::delete('/medicines/{medicine}', [MedicineController::class, 'destroy']);

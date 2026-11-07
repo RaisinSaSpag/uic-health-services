@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Archive,
   ArrowLeft,
@@ -13,6 +13,7 @@ import {
   Trash2,
   X,
   Building2,
+  Filter,
   type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -89,6 +90,9 @@ export function NurseInventoryStocksPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { basePath, isDoctor } = useInventoryBasePath();
+  
+  // 🚨 NEW: Read URL params for the KPI card links
+  const [searchParams] = useSearchParams();
 
   const isCoordinator = user?.role === 'coordinator';
 
@@ -108,6 +112,11 @@ export function NurseInventoryStocksPage() {
   const [medicines, setMedicines] = useState<Medicine[]>([]);
   const [campusStockMap, setCampusStockMap] = useState<Record<number, number>>({});
   const [search, setSearch] = useState('');
+  
+  // 🚨 NEW: Initialize filter from URL param
+  const [stockFilter, setStockFilter] = useState<'all' | 'out' | 'low' | 'healthy' | 'expiring'>(
+    (searchParams.get('filter') as any) || 'all'
+  );
   const [loading, setLoading] = useState(true);
 
   // Modal states
@@ -194,14 +203,31 @@ export function NurseInventoryStocksPage() {
     void loadData();
   }, [loadData]);
 
+  // 🚨 NEW FILTER LOGIC
   const filteredMedicines = useMemo(() => {
     const normalized = search.trim().toLowerCase();
-    if (normalized === '') return medicines;
-    return medicines.filter((medicine) =>
-      medicine.name.toLowerCase().includes(normalized) ||
-      medicine.category.toLowerCase().includes(normalized)
-    );
-  }, [medicines, search]);
+    
+    return medicines.filter((medicine) => {
+      const stock = campusStockMap[medicine.id] || 0;
+      
+      // Text Search Filter
+      const matchesSearch = normalized === '' || 
+        medicine.name.toLowerCase().includes(normalized) ||
+        medicine.category.toLowerCase().includes(normalized);
+
+      // Stock Level Filter
+      let matchesStock = true;
+      if (stockFilter === 'out') matchesStock = stock === 0;
+      if (stockFilter === 'low') matchesStock = stock > 0 && stock <= 20;
+      if (stockFilter === 'healthy') matchesStock = stock > 20;
+      
+      // For Expiring, we just show items that have stock for now
+      // (To do this properly, the availableStocks endpoint would need to return expiration dates)
+      if (stockFilter === 'expiring') matchesStock = stock > 0; 
+
+      return matchesSearch && matchesStock;
+    });
+  }, [medicines, search, stockFilter, campusStockMap]);
 
   const openAddModal = (): void => {
     setEditingMedicine(null);
@@ -365,8 +391,10 @@ export function NurseInventoryStocksPage() {
           </div>
         </header>
 
-        <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
-          <div style={{ position: 'relative', flex: 1 }}>
+        <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+          
+          {/* Search Bar */}
+          <div style={{ position: 'relative', flex: 1, minWidth: '250px' }}>
             <Search style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} size={18} />
             <input
               type="text"
@@ -377,10 +405,28 @@ export function NurseInventoryStocksPage() {
               style={{ width: '100%', padding: '0.75rem 1rem 0.75rem 2.5rem', borderRadius: '8px', border: '1px solid #e2e8f0', backgroundColor: 'white' }}
             />
           </div>
+
+          {/* Stock Filter */}
+          <div style={{ display: 'flex', alignItems: 'center', backgroundColor: 'white', borderRadius: '8px', border: '1px solid #e2e8f0', padding: '0 0.5rem' }}>
+            <Filter size={16} color="#64748b" style={{ marginLeft: '0.5rem' }} />
+            <select 
+              value={stockFilter} 
+              onChange={(e) => setStockFilter(e.target.value as any)}
+              style={{ padding: '0.75rem 0.5rem', border: 'none', background: 'transparent', outline: 'none', cursor: 'pointer', fontWeight: 500, color: '#0f172a' }}
+            >
+              <option value="all">All Stock Levels</option>
+              <option value="out">Out of Stock</option>
+              <option value="low">Low Stock (≤ 20)</option>
+              <option value="healthy">Healthy Stock (&gt; 20)</option>
+              <option value="expiring">Expiring Soon</option>
+            </select>
+          </div>
+
           <button className="button ghost" onClick={() => void loadData()} type="button" style={{ backgroundColor: 'white', border: '1px solid #e2e8f0', padding: '0 1rem' }}>
             <RefreshCw size={18} className={loading ? 'spinner' : ''} />
           </button>
-          {canWrite && isCoordinator && (
+          
+          {canWrite && (
             <button className="button primary" onClick={openAddModal} type="button">
               <Plus size={16} /> Add Medicine
             </button>

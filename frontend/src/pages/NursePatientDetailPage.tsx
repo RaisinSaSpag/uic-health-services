@@ -16,11 +16,13 @@ import {
   Printer,
   Search,
   Stethoscope,
+  ArrowUpCircle,
   type LucideIcon,
   MessageSquare,
 } from 'lucide-react';
 import { StatusBadge } from '../components/StatusBadge';
 import { PatientProfileTab } from '../components/PatientProfileTab';
+import { EnrollmentRollUpModal } from '../components/EnrollmentRollUpModal';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../lib/api';
 import { notifyError } from '../lib/alerts';
@@ -140,6 +142,10 @@ export function NursePatientDetailPage() {
   const [selectedConsultation, setSelectedConsultation] = useState<Consultation | null>(null);
   const [loadingConsultation, setLoadingConsultation] = useState(false);
   const [showConsultationMoreDetails, setShowConsultationMoreDetails] = useState(false);
+  
+  // 🚨 NEW: State for the Roll-Up modal
+  const [isRollUpOpen, setRollUpOpen] = useState(false);
+  
   const consultationRequestTokenRef = useRef(0);
 
   const nurseName = useMemo(() => userDisplayName(user), [user]);
@@ -368,7 +374,18 @@ export function NursePatientDetailPage() {
                   <p>{patientType === 'student' ? 'Student' : 'Employee'} · {normalizeText(patient.department?.name)}</p>
                   <p>Campus: {patient.campus?.name ?? 'N/A'} · Profile Type: {patient.student_level ? normalizeText(patient.student_level) : normalizeText(patient.patient_type)}</p>
                 </div>
-                <div className="nurse-patient-summary-actions">
+                
+                {/* 🚨 NEW: Added the Move Up button here */}
+                <div className="nurse-patient-summary-actions" style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button 
+                    className="button ghost" 
+                    onClick={() => setRollUpOpen(true)} 
+                    type="button"
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#a3224a', borderColor: '#fbcfe8', background: '#fdf2f4' }}
+                  >
+                    <ArrowUpCircle size={18} />
+                    Move Up Level
+                  </button>
                   <button className="button nurse-patient-new-button" onClick={() => navigate(`/nurse/patients/${patient.id}/new-consultation`)} type="button">
                     <Plus className="nurse-patient-new-icon" size={19} strokeWidth={2.6} />
                     <span className="nurse-patient-new-label">New</span>
@@ -474,6 +491,16 @@ export function NursePatientDetailPage() {
                   )}
                 </section>
               )}
+
+              {/* 🚨 NEW: Render the Modal */}
+              <EnrollmentRollUpModal 
+                isOpen={isRollUpOpen} 
+                onClose={() => setRollUpOpen(false)} 
+                patient={patient}
+                onSuccess={() => {
+                  void loadPatientContext();
+                }}
+              />
 
               {selectedConsultation && (
                 <div className="nurse-consultation-modal-backdrop" onClick={closeConsultationModal} role="presentation">

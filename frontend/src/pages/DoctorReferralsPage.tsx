@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { 
-  LayoutDashboard, 
-  Stethoscope, 
-  Info, 
-  MessageSquare, 
+import {
+  LayoutDashboard,
+  Stethoscope,
+  Info,
+  MessageSquare,
   ArrowLeft,
   Video,
-  Plus
+  Search,
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { confirmAction, notifyError, notifySuccess } from '../lib/alerts';
@@ -15,7 +15,7 @@ import { formatDateTime, userDisplayName } from '../lib/format';
 import { getErrorMessage } from '../lib/http';
 import { useAuth } from '../context/AuthContext';
 import { StatusBadge } from '../components/StatusBadge';
-import type { PaginatedResponse, Referral, Medicine } from '../types/hsms';
+import type { PaginatedResponse, Referral } from '../types/hsms';
 
 type DoctorSection = 'dashboard' | 'referrals' | 'about' | 'chat' | 'notifications';
 
@@ -40,14 +40,14 @@ const referralStatusOptions = [
 
 function parseReferralId(value: string | undefined): number | null {
   const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    return null;
-  }
+  if (!Number.isInteger(parsed) || parsed <= 0) return null;
   return parsed;
 }
 
 function normalizeText(value: string | null | undefined): string {
   if (!value) return 'N/A';
+  if (value === 'walk_in') return 'Walk-In';
+  if (value === 'scheduled') return 'Scheduled';
   return value.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
@@ -69,17 +69,13 @@ export function DoctorReferralsPage() {
 
   const [detailReferral, setDetailReferral] = useState<Referral | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
-  
+
   // Form State
   const [finalDiagnosis, setFinalDiagnosis] = useState('');
   const [treatmentPlan, setTreatmentPlan] = useState('');
   const [doctorRemarks, setDoctorRemarks] = useState('');
   const [prescriptionText, setPrescriptionText] = useState('');
   const [saving, setSaving] = useState(false);
-
-  // Medicines Catalog State
-  const [medicines, setMedicines] = useState<Medicine[]>([]);
-  const [selectedMedicineId, setSelectedMedicineId] = useState<string>('');
 
   const routeReferralId = useMemo(() => parseReferralId(rawReferralId), [rawReferralId]);
   const isDetailMode = routeReferralId !== null;
@@ -94,7 +90,7 @@ export function DoctorReferralsPage() {
         params: { per_page: 100, ...(statusFilter ? { status: statusFilter } : {}) },
       });
       const activeReferrals = response.data.data.filter((r) => r.status !== 'completed');
-      setReferrals(activeReferrals);
+      setReferrals(activeReferrals || []);
     } catch (err) {
       void notifyError(getErrorMessage(err, 'Unable to load doctor referrals.'), 'Load Failed');
     } finally {
@@ -111,25 +107,18 @@ export function DoctorReferralsPage() {
     try {
       const response = await api.get<Referral>(`/referrals/${routeReferralId}`);
       setDetailReferral(response.data);
-      
-      // Load existing data if it exists
+
       setFinalDiagnosis(response.data.final_diagnosis ?? '');
       setTreatmentPlan(response.data.treatment_plan ?? '');
       setDoctorRemarks(response.data.doctor_remarks ?? '');
       setPrescriptionText(response.data.prescription ?? '');
-
-      // Load Medicines Catalog if not already loaded
-      if (medicines.length === 0) {
-        const medRes = await api.get<PaginatedResponse<Medicine>>('/medicines', { params: { per_page: 100 } });
-        setMedicines(medRes.data.data);
-      }
     } catch (err) {
       void notifyError(getErrorMessage(err, 'Unable to load selected referral.'), 'Load Failed');
       navigate('/doctor/referrals');
     } finally {
       setLoadingDetail(false);
     }
-  }, [navigate, routeReferralId, medicines.length]);
+  }, [navigate, routeReferralId]);
 
   useEffect(() => {
     if (isDetailMode) {
@@ -158,22 +147,17 @@ export function DoctorReferralsPage() {
 
   const onMenuClick = (section: DoctorSection): void => {
     setActiveSection(section);
-    if (section === 'dashboard') { navigate('/doctor'); return; }
-    if (section === 'chat') { navigate('/doctor/chat'); return; }
-    if (section === 'about') { navigate('/doctor/about'); }
-  };
-
-  const handleAddMedicineToPrescription = () => {
-    if (!selectedMedicineId) return;
-    const med = medicines.find(m => m.id === Number(selectedMedicineId));
-    if (!med) return;
-    
-    const newText = prescriptionText.trim() 
-      ? `${prescriptionText.trim()}\n- ${med.name}` 
-      : `- ${med.name}`;
-      
-    setPrescriptionText(newText);
-    setSelectedMedicineId('');
+    if (section === 'dashboard') {
+      navigate('/doctor');
+      return;
+    }
+    if (section === 'chat') {
+      navigate('/doctor/chat');
+      return;
+    }
+    if (section === 'about') {
+      navigate('/doctor/about');
+    }
   };
 
   const updateReferral = async (action: 'in_progress' | 'complete'): Promise<void> => {
@@ -243,6 +227,32 @@ export function DoctorReferralsPage() {
   const canComplete = detailReferral ? ['pending_doctor', 'in_progress'].includes(detailReferral.status) : false;
   const isCompleted = detailReferral?.status === 'completed';
 
+  // Shared styles
+  const sectionCard: React.CSSProperties = {
+    background: '#ffffff',
+    border: '1px solid #e2e8f0',
+    borderRadius: 12,
+    padding: '1.5rem 1.75rem',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+  };
+
+  const labelStyle: React.CSSProperties = {
+    fontSize: '0.75rem',
+    fontWeight: 600,
+    color: '#64748b',
+    textTransform: 'uppercase',
+    letterSpacing: '0.03em',
+    display: 'block',
+    marginBottom: 4,
+  };
+
+  const valueStyle: React.CSSProperties = {
+    margin: 0,
+    fontSize: '0.95rem',
+    color: '#0f172a',
+    lineHeight: 1.45,
+  };
+
   return (
     <div className="nurse-dashboard-page" style={{ minHeight: '100vh', display: 'flex' }}>
       {/* SIDEBAR */}
@@ -274,27 +284,53 @@ export function DoctorReferralsPage() {
       </aside>
 
       {/* MAIN CONTENT */}
-      <main className="nurse-dashboard-main" style={{ flex: 1, minHeight: '100vh' }}>
+      <main className="nurse-dashboard-main" style={{ flex: 1, padding: '1.75rem 2rem 2.5rem' }}>
         {!isDetailMode ? (
-          <section className="panel">
-            <div className="panel-head">
-              <div>
-                <h2>Referral Consultations</h2>
-                <p className="muted small">View and manage nurse referral consultations.</p>
-              </div>
+          /* ──────────── LIST VIEW ──────────── */
+          <section>
+            <div style={{ marginBottom: '1.5rem' }}>
+              <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 650, color: '#0f172a' }}>
+                Referral Consultations
+              </h2>
+              <p className="muted" style={{ margin: '0.35rem 0 0', fontSize: '0.9rem' }}>
+                View and manage nurse referral consultations.
+              </p>
             </div>
 
-            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
-              <label className="field" style={{ flex: 1 }}>
-                <span>Search Referrals</span>
-                <input
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Search by patient, referral reason, or status"
-                />
+            {/* Filters */}
+            <div
+              style={{
+                display: 'flex',
+                gap: '1rem',
+                marginBottom: '1.25rem',
+                flexWrap: 'wrap',
+                alignItems: 'flex-end',
+              }}
+            >
+              <label className="field" style={{ flex: 1, minWidth: 220 }}>
+                <span>Search</span>
+                <div style={{ position: 'relative' }}>
+                  <Search
+                    size={16}
+                    style={{
+                      position: 'absolute',
+                      left: 12,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      color: '#94a3b8',
+                      pointerEvents: 'none',
+                    }}
+                  />
+                  <input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Patient, reason, or status…"
+                    style={{ paddingLeft: 36 }}
+                  />
+                </div>
               </label>
 
-              <label className="field" style={{ width: '250px' }}>
+              <label className="field" style={{ width: 240 }}>
                 <span>Status</span>
                 <select value={statusFilter} onChange={onFilterChange}>
                   {referralStatusOptions.map((option) => (
@@ -306,197 +342,390 @@ export function DoctorReferralsPage() {
               </label>
             </div>
 
-            {loading ? (
-              <p className="muted">Loading referrals...</p>
-            ) : filteredReferrals.length === 0 ? (
-              <p className="empty-state">No active referrals found for this filter.</p>
-            ) : (
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Patient</th>
-                      <th>Status</th>
-                      <th>Referred At</th>
-                      <th>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredReferrals.map((referral) => (
-                      <tr key={referral.id}>
-                        <td>{userDisplayName(referral.consultation?.patient?.user)}</td>
-                        <td>
-                          <StatusBadge status={referral.status} />
-                        </td>
-                        <td>{formatDateTime(referral.referred_at)}</td>
-                        <td>
-                          <button
-                            className="button ghost"
-                            onClick={() => navigate(`/doctor/referrals/${referral.id}`)}
-                            type="button"
-                          >
-                            View
-                          </button>
-                        </td>
+            {/* Table / Empty / Loading */}
+            <div style={sectionCard}>
+              {loading ? (
+                <p className="muted" style={{ margin: 0 }}>
+                  Loading referrals…
+                </p>
+              ) : filteredReferrals.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '2.5rem 1rem' }}>
+                  <Stethoscope size={32} strokeWidth={1.5} style={{ color: '#cbd5e1', marginBottom: 12 }} />
+                  <p className="muted" style={{ margin: 0 }}>
+                    No active referrals found for this filter.
+                  </p>
+                </div>
+              ) : (
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Patient</th>
+                        <th>Status</th>
+                        <th>Referred At</th>
+                        <th style={{ width: 100 }}>Action</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                    </thead>
+                    <tbody>
+                      {filteredReferrals.map((referral) => (
+                        <tr key={referral.id}>
+                          <td style={{ fontWeight: 500 }}>
+                            {userDisplayName(referral.consultation?.patient?.user)}
+                          </td>
+                          <td>
+                            <StatusBadge status={referral.status} />
+                          </td>
+                          <td className="muted" style={{ fontSize: '0.9rem' }}>
+                            {formatDateTime(referral.referred_at)}
+                          </td>
+                          <td>
+                            <button
+                              className="button ghost"
+                              onClick={() => navigate(`/doctor/referrals/${referral.id}`)}
+                              type="button"
+                              style={{ padding: '0.35rem 0.75rem' }}
+                            >
+                              View
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </section>
         ) : (
-          <section className="panel">
-            <div className="panel-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-              <h2>Referral Consultation Detail</h2>
+          /* ──────────── DETAIL VIEW ──────────── */
+          <div style={{ maxWidth: 1080, margin: '0 auto' }}>
+            {/* Header */}
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '1.5rem',
+                gap: '1rem',
+                flexWrap: 'wrap',
+              }}
+            >
+              <div>
+                <h2 style={{ margin: 0, fontSize: '1.45rem', fontWeight: 650, color: '#0f172a' }}>
+                  Referral Consultation
+                </h2>
+                {detailReferral && (
+                  <p className="muted" style={{ margin: '0.3rem 0 0', fontSize: '0.9rem' }}>
+                    #{detailReferral.id} · {userDisplayName(detailReferral.consultation?.patient?.user)}
+                  </p>
+                )}
+              </div>
               <button
                 className="button ghost"
                 onClick={() => navigate('/doctor/referrals')}
                 type="button"
-                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
               >
-                <ArrowLeft size={18} /> Back
+                <ArrowLeft size={17} />
+                Back to list
               </button>
             </div>
 
             {loadingDetail || !detailReferral ? (
-              <p className="muted">Loading referral details...</p>
+              <div style={{ ...sectionCard, textAlign: 'center', padding: '3rem' }}>
+                <p className="muted" style={{ margin: 0 }}>
+                  Loading referral details…
+                </p>
+              </div>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
-                {/* Left Side: Nurse Details */}
-                <article>
-                  <h3 style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '0.5rem', marginBottom: '1rem' }}>Nurse Consultation Details</h3>
-                  <table>
-                    <tbody>
-                      <tr><td>Patient</td><td>{userDisplayName(detailReferral.consultation?.patient?.user)}</td></tr>
-                      <tr><td>Consultation Type</td><td>{normalizeText(detailReferral.consultation?.consultation_type)}</td></tr>
-                      <tr><td>Chief Complaint</td><td>{detailReferral.consultation?.chief_complaint ?? 'N/A'}</td></tr>
-                      <tr><td>Diagnosis</td><td>{detailReferral.consultation?.diagnosis ?? 'N/A'}</td></tr>
-                      <tr><td>Remarks</td><td>{detailReferral.consultation?.remarks ?? 'N/A'}</td></tr>
-                      <tr><td>Blood Pressure</td><td>{normalizeVital(detailReferral.consultation?.blood_pressure)}</td></tr>
-                      <tr><td>Pulse</td><td>{normalizeVital(detailReferral.consultation?.pulse_bpm, 'bpm')}</td></tr>
-                      <tr><td>Temperature</td><td>{normalizeVital(detailReferral.consultation?.temperature_c, 'C')}</td></tr>
-                      <tr><td>Weight</td><td>{normalizeVital(detailReferral.consultation?.weight_kg, 'kg')}</td></tr>
-                      <tr><td>Referral Reason</td><td>{detailReferral.referral_reason}</td></tr>
-                    </tbody>
-                  </table>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'minmax(280px, 1fr) minmax(320px, 1.25fr)',
+                  gap: '1.5rem',
+                  alignItems: 'start',
+                }}
+              >
+                {/* ── Left: Nurse Assessment ── */}
+                <div style={sectionCard}>
+                  <h3
+                    style={{
+                      margin: '0 0 1.25rem',
+                      fontSize: '1.05rem',
+                      fontWeight: 600,
+                      color: '#a3224a',
+                      borderBottom: '2px solid #fce7f3',
+                      paddingBottom: '0.65rem',
+                    }}
+                  >
+                    Nurse Assessment
+                  </h3>
 
-                  {/* Telemed Join Button */}
-                  {detailReferral.consultation?.is_telemed && detailReferral.consultation?.telemed_link && (
-                    <div style={{ marginTop: '1.5rem', padding: '1rem', background: '#e3f2fd', borderRadius: '8px', border: '1px solid #90caf9' }}>
-                      <h4 style={{ margin: '0 0 0.5rem 0', color: '#1565c0' }}>Telemed Consultation</h4>
-                      <p className="small" style={{ margin: '0 0 1rem 0' }}>The nurse has requested a telemed session for this patient.</p>
-                      <a 
-                        href={detailReferral.consultation.telemed_link} 
-                        target="_blank" 
-                        rel="noopener noreferrer" 
-                        className="button primary"
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', textDecoration: 'none' }}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.15rem' }}>
+                    <div>
+                      <span style={labelStyle}>Patient</span>
+                      <p style={{ ...valueStyle, fontWeight: 560 }}>
+                        {userDisplayName(detailReferral.consultation?.patient?.user)}
+                      </p>
+                    </div>
+
+                    <div>
+                      <span style={labelStyle}>Consultation Type</span>
+                      <p style={valueStyle}>
+                        {normalizeText(detailReferral.consultation?.consultation_type)}
+                      </p>
+                    </div>
+
+                    <div>
+                      <span style={labelStyle}>Chief Complaint</span>
+                      <p
+                        style={{
+                          ...valueStyle,
+                          background: '#f8fafc',
+                          padding: '0.7rem 0.85rem',
+                          borderRadius: 8,
+                          border: '1px solid #e2e8f0',
+                        }}
                       >
-                        <Video size={18} />
-                        Join Video Call
-                      </a>
+                        {detailReferral.consultation?.chief_complaint ?? 'N/A'}
+                      </p>
+                    </div>
+
+                    <div>
+                      <span style={labelStyle}>Nurse Diagnosis</span>
+                      <p style={valueStyle}>{detailReferral.consultation?.diagnosis ?? 'N/A'}</p>
+                    </div>
+
+                    <div>
+                      <span style={labelStyle}>Nurse Remarks</span>
+                      <p style={valueStyle}>{detailReferral.consultation?.remarks ?? 'N/A'}</p>
+                    </div>
+
+                    {/* Vitals */}
+                    <div
+                      style={{
+                        borderTop: '1px solid #e2e8f0',
+                        paddingTop: '1rem',
+                        marginTop: 4,
+                      }}
+                    >
+                      <span style={{ ...labelStyle, marginBottom: 8 }}>Vitals</span>
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '1fr 1fr',
+                          gap: '0.6rem 1rem',
+                          fontSize: '0.9rem',
+                        }}
+                      >
+                        <div>
+                          <span className="muted">BP</span>
+                          <div style={{ fontWeight: 500 }}>
+                            {normalizeVital(detailReferral.consultation?.blood_pressure)}
+                          </div>
+                        </div>
+                        <div>
+                          <span className="muted">Pulse</span>
+                          <div style={{ fontWeight: 500 }}>
+                            {normalizeVital(detailReferral.consultation?.pulse_bpm, 'bpm')}
+                          </div>
+                        </div>
+                        <div>
+                          <span className="muted">Temp</span>
+                          <div style={{ fontWeight: 500 }}>
+                            {normalizeVital(detailReferral.consultation?.temperature_c, '°C')}
+                          </div>
+                        </div>
+                        <div>
+                          <span className="muted">Weight</span>
+                          <div style={{ fontWeight: 500 }}>
+                            {normalizeVital(detailReferral.consultation?.weight_kg, 'kg')}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Referral Reason */}
+                    <div
+                      style={{
+                        borderTop: '1px solid #e2e8f0',
+                        paddingTop: '1rem',
+                        marginTop: 4,
+                      }}
+                    >
+                      <span style={labelStyle}>Referral Reason</span>
+                      <p style={{ ...valueStyle, color: '#b91c1c', fontWeight: 500 }}>
+                        {detailReferral.referral_reason || 'N/A'}
+                      </p>
+                    </div>
+
+                    {/* Telemed */}
+                    {detailReferral.consultation?.is_telemed &&
+                      detailReferral.consultation?.telemed_link && (
+                        <div
+                          style={{
+                            marginTop: 4,
+                            padding: '1rem 1.1rem',
+                            background: '#fdf2f8',
+                            borderRadius: 10,
+                            border: '1px solid #fbcfe8',
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontSize: '0.8rem',
+                              fontWeight: 600,
+                              color: '#a3224a',
+                              marginBottom: 8,
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.03em',
+                            }}
+                          >
+                            Telemed Consultation
+                          </div>
+                          <a
+                            href={detailReferral.consultation.telemed_link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="button primary"
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 6,
+                              textDecoration: 'none',
+                              padding: '0.45rem 0.9rem',
+                              fontSize: '0.875rem',
+                            }}
+                          >
+                            <Video size={15} />
+                            Join Video Call
+                          </a>
+                        </div>
+                      )}
+                  </div>
+                </div>
+
+                {/* ── Right: Doctor Assessment ── */}
+                <div style={sectionCard}>
+                  <h3
+                    style={{
+                      margin: '0 0 1.25rem',
+                      fontSize: '1.05rem',
+                      fontWeight: 600,
+                      color: '#a3224a',
+                      borderBottom: '2px solid #fce7f3',
+                      paddingBottom: '0.65rem',
+                    }}
+                  >
+                    Doctor Assessment
+                  </h3>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
+                    <label className="field">
+                      <span>Final Diagnosis *</span>
+                      <textarea
+                        rows={2}
+                        value={finalDiagnosis}
+                        onChange={(e) => setFinalDiagnosis(e.target.value)}
+                        placeholder="e.g. Upper Respiratory Tract Infection"
+                        disabled={isCompleted || saving}
+                      />
+                    </label>
+
+                    <label className="field">
+                      <span>Treatment Plan *</span>
+                      <textarea
+                        rows={2}
+                        value={treatmentPlan}
+                        onChange={(e) => setTreatmentPlan(e.target.value)}
+                        placeholder="e.g. Rest and hydration, follow up in 3 days"
+                        disabled={isCompleted || saving}
+                      />
+                    </label>
+
+                    <label className="field">
+                      <span>Doctor Remarks *</span>
+                      <textarea
+                        rows={3}
+                        value={doctorRemarks}
+                        onChange={(e) => setDoctorRemarks(e.target.value)}
+                        placeholder="Clinical assessment, findings, and recommendations"
+                        disabled={isCompleted || saving}
+                      />
+                    </label>
+
+                    <div className="field">
+                      <span>Prescription (Optional)</span>
+                      <textarea
+                        rows={4}
+                        value={prescriptionText}
+                        onChange={(e) => setPrescriptionText(e.target.value)}
+                        placeholder="Type prescription details here (e.g. Paracetamol 500mg, 1 tab every 4 hours)"
+                        disabled={isCompleted || saving}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  {(canSetInProgress || canComplete) && (
+                    <div
+                      style={{
+                        display: 'flex',
+                        gap: '0.75rem',
+                        marginTop: '1.75rem',
+                        paddingTop: '1.35rem',
+                        borderTop: '1px solid #e2e8f0',
+                      }}
+                    >
+                      {canSetInProgress && (
+                        <button
+                          className="button secondary"
+                          onClick={() => void updateReferral('in_progress')}
+                          disabled={saving}
+                          type="button"
+                          style={{ flex: 1 }}
+                        >
+                          Mark In Progress
+                        </button>
+                      )}
+                      {canComplete && (
+                        <button
+                          className="button success"
+                          onClick={() => void updateReferral('complete')}
+                          disabled={saving}
+                          type="button"
+                          style={{
+                            flex: 1,
+                            background: '#059669',
+                            borderColor: '#059669',
+                          }}
+                        >
+                          {saving ? 'Saving…' : 'Complete Referral'}
+                        </button>
+                      )}
                     </div>
                   )}
-                </article>
 
-                {/* Right Side: Doctor Assessment */}
-                <article>
-                  <h3 style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '0.5rem', marginBottom: '1rem' }}>Doctor Assessment</h3>
-                  
-                  <label className="field full-width">
-                    <span>Final Diagnosis *</span>
-                    <textarea
-                      rows={2}
-                      value={finalDiagnosis}
-                      onChange={(e) => setFinalDiagnosis(e.target.value)}
-                      placeholder="Enter final diagnosis (e.g., Upper Respiratory Tract Infection)"
-                      disabled={isCompleted || saving}
-                    />
-                  </label>
-
-                  <label className="field full-width" style={{ marginTop: '1rem' }}>
-                    <span>Treatment Plan *</span>
-                    <textarea
-                      rows={2}
-                      value={treatmentPlan}
-                      onChange={(e) => setTreatmentPlan(e.target.value)}
-                      placeholder="Enter treatment plan (e.g., Rest and hydration, follow up in 3 days)"
-                      disabled={isCompleted || saving}
-                    />
-                  </label>
-
-                  <label className="field full-width" style={{ marginTop: '1rem' }}>
-                    <span>Doctor Remarks *</span>
-                    <textarea
-                      rows={3}
-                      value={doctorRemarks}
-                      onChange={(e) => setDoctorRemarks(e.target.value)}
-                      placeholder="Enter your clinical assessment, findings, and recommendations"
-                      disabled={isCompleted || saving}
-                    />
-                  </label>
-
-                  <div className="field full-width" style={{ marginTop: '1rem' }}>
-                    <span>Prescription (Optional)</span>
-                    <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                      <select 
-                        value={selectedMedicineId} 
-                        onChange={(e) => setSelectedMedicineId(e.target.value)}
-                        disabled={isCompleted || saving}
-                        style={{ flex: 1, padding: '0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
-                      >
-                        <option value="">-- Select a medicine to add --</option>
-                        {medicines.map(m => (
-                          <option key={m.id} value={m.id}>{m.name} ({m.category})</option>
-                        ))}
-                      </select>
-                      <button 
-                        type="button" 
-                        className="button secondary" 
-                        onClick={handleAddMedicineToPrescription}
-                        disabled={!selectedMedicineId || isCompleted || saving}
-                        style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}
-                      >
-                        <Plus size={16} /> Add
-                      </button>
+                  {isCompleted && (
+                    <div
+                      style={{
+                        marginTop: '1.5rem',
+                        padding: '0.85rem 1rem',
+                        background: '#f0fdf4',
+                        border: '1px solid #bbf7d0',
+                        borderRadius: 8,
+                        color: '#166534',
+                        fontSize: '0.9rem',
+                        fontWeight: 500,
+                      }}
+                    >
+                      This referral has been completed.
                     </div>
-                    
-                    <textarea
-                      rows={4}
-                      value={prescriptionText}
-                      onChange={(e) => setPrescriptionText(e.target.value)}
-                      placeholder="Selected medicines will appear here. You can add dosage instructions."
-                      disabled={isCompleted || saving}
-                    />
-                  </div>
-
-                  <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
-                    {canSetInProgress && (
-                      <button
-                        className="button secondary"
-                        onClick={() => void updateReferral('in_progress')}
-                        disabled={saving}
-                        type="button"
-                      >
-                        Mark In Progress
-                      </button>
-                    )}
-                    {canComplete && (
-                      <button
-                        className="button success"
-                        onClick={() => void updateReferral('complete')}
-                        disabled={saving}
-                        type="button"
-                      >
-                        {saving ? 'Saving...' : 'Complete Referral'}
-                      </button>
-                    )}
-                  </div>
-                </article>
+                  )}
+                </div>
               </div>
             )}
-          </section>
+          </div>
         )}
       </main>
     </div>

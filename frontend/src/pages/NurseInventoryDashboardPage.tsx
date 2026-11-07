@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import {
   ArrowLeft,
   AlertTriangle,
@@ -165,6 +165,14 @@ export function NurseInventoryDashboardPage() {
     }
   };
 
+  // Helper to make the whole KPI card clickable without ugly blue underlines
+  const clickableCardStyle: React.CSSProperties = {
+    textDecoration: 'none',
+    color: 'inherit',
+    display: 'block',
+    transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+  };
+
   return (
     <div className="nurse-dashboard-page">
       <aside className="nurse-sidebar" aria-label="Inventory sidebar">
@@ -177,18 +185,18 @@ export function NurseInventoryDashboardPage() {
         </div>
 
         <nav className="nurse-sidebar-nav" aria-label="Inventory navigation">
-              <div className="nurse-nav-item">
-                <button
-                  className="nurse-side-link back-to-dashboard"
-                  onClick={() => navigate(basePath === '/doctor/inventory' ? '/doctor' : '/nurse')}
-                  type="button"
-                >
-                  <ArrowLeft className="nurse-side-icon" size={18} strokeWidth={2.2} />
-                  <span className="nurse-side-label">Back to Dashboard</span>
-                </button>
-              </div>
+          <div className="nurse-nav-item">
+            <button
+              className="nurse-side-link back-to-dashboard"
+              onClick={() => navigate(basePath === '/doctor/inventory' ? '/doctor' : '/nurse')}
+              type="button"
+            >
+              <ArrowLeft className="nurse-side-icon" size={18} strokeWidth={2.2} />
+              <span className="nurse-side-label">Back to Dashboard</span>
+            </button>
+          </div>
 
-              {resolvedMenuItems.map((item) => {
+          {resolvedMenuItems.map((item) => {
             const Icon = item.icon;
             return (
               <div className="nurse-nav-item" key={item.key}>
@@ -229,45 +237,59 @@ export function NurseInventoryDashboardPage() {
         </section>
 
         <section className="nurse-kpi-grid" aria-label="Inventory metrics">
-          <article className="panel nurse-kpi-card">
-            <div className="nurse-kpi-head">
-              <span className="nurse-kpi-icon-wrap">
-                <Package className="nurse-kpi-icon" size={16} strokeWidth={2.2} />
-              </span>
-              <p className="nurse-kpi-label">Total Medicines</p>
-            </div>
-            <p className="nurse-kpi-value">{stats.totalMedicines}</p>
-          </article>
+          
+          {/* 🚨 CLICKABLE KPI: Total Medicines */}
+          <Link to={`${basePath}/stocks`} style={clickableCardStyle} className="hover-card">
+            <article className="panel nurse-kpi-card">
+              <div className="nurse-kpi-head">
+                <span className="nurse-kpi-icon-wrap">
+                  <Package className="nurse-kpi-icon" size={16} strokeWidth={2.2} />
+                </span>
+                <p className="nurse-kpi-label">Total Medicines</p>
+              </div>
+              <p className="nurse-kpi-value">{stats.totalMedicines}</p>
+            </article>
+          </Link>
 
-          <article className="panel nurse-kpi-card">
-            <div className="nurse-kpi-head">
-              <span className="nurse-kpi-icon-wrap">
-                <CheckCircle2 className="nurse-kpi-icon" size={16} strokeWidth={2.2} />
-              </span>
-              <p className="nurse-kpi-label">Total Stock Units</p>
-            </div>
-            <p className="nurse-kpi-value">{stats.totalStockUnits}</p>
-          </article>
+          {/* 🚨 CLICKABLE KPI: Total Stock Units */}
+          <Link to={`${basePath}/stocks`} style={clickableCardStyle} className="hover-card">
+            <article className="panel nurse-kpi-card">
+              <div className="nurse-kpi-head">
+                <span className="nurse-kpi-icon-wrap">
+                  <CheckCircle2 className="nurse-kpi-icon" size={16} strokeWidth={2.2} />
+                </span>
+                <p className="nurse-kpi-label">Total Stock Units</p>
+              </div>
+              <p className="nurse-kpi-value">{stats.totalStockUnits}</p>
+            </article>
+          </Link>
 
-          <article className="panel nurse-kpi-card">
-            <div className="nurse-kpi-head">
-              <span className="nurse-kpi-icon-wrap">
-                <AlertTriangle className="nurse-kpi-icon" size={16} strokeWidth={2.2} />
-              </span>
-              <p className="nurse-kpi-label">Low Stock</p>
-            </div>
-            <p className="nurse-kpi-value">{stats.lowStockCount}</p>
-          </article>
+          {/* 🚨 CLICKABLE KPI: Low Stock */}
+          <Link to={`${basePath}/stocks?filter=low`} style={clickableCardStyle} className="hover-card">
+            <article className="panel nurse-kpi-card">
+              <div className="nurse-kpi-head">
+                <span className="nurse-kpi-icon-wrap">
+                  <AlertTriangle className="nurse-kpi-icon" size={16} strokeWidth={2.2} />
+                </span>
+                <p className="nurse-kpi-label">Low Stock</p>
+              </div>
+              <p className="nurse-kpi-value">{stats.lowStockCount}</p>
+            </article>
+          </Link>
 
-          <article className="panel nurse-kpi-card">
-            <div className="nurse-kpi-head">
-              <span className="nurse-kpi-icon-wrap">
-                <AlertTriangle className="nurse-kpi-icon" size={16} strokeWidth={2.2} />
-              </span>
-              <p className="nurse-kpi-label">Expiring Soon</p>
-            </div>
-            <p className="nurse-kpi-value">{stats.expiringSoonCount}</p>
-          </article>
+          {/* 🚨 CLICKABLE KPI: Expiring Soon */}
+          <Link to={`${basePath}/stocks?filter=expiring`} style={clickableCardStyle} className="hover-card">
+            <article className="panel nurse-kpi-card">
+              <div className="nurse-kpi-head">
+                <span className="nurse-kpi-icon-wrap">
+                  <AlertTriangle className="nurse-kpi-icon" size={16} strokeWidth={2.2} />
+                </span>
+                <p className="nurse-kpi-label">Expiring Soon</p>
+              </div>
+              <p className="nurse-kpi-value">{stats.expiringSoonCount}</p>
+            </article>
+          </Link>
+
         </section>
 
         <section className="panel">

@@ -81,7 +81,7 @@ class ReportsApiTest extends TestCase
 
     public function test_report_is_campus_scoped(): void
     {
-        $campusA = Campus::where('code', 'MAIN')->first();
+        $campusA = Campus::where('code', 'FATHER_SELGA')->first();
         $campusB = Campus::where('code', 'BAJADA_GS')->first();
 
         $nurseA = User::factory()->withRole('nurse')->create(['campus_id' => $campusA->id]);
@@ -110,14 +110,14 @@ class ReportsApiTest extends TestCase
         $this->assertCount(0, $response->json());
     }
 
-    public function test_doctor_has_no_report_access(): void
+    public function test_doctor_can_access_reports(): void
     {
         $campus = Campus::first();
         $doctor = User::factory()->withRole('doctor')->create(['campus_id' => $campus->id]);
 
-        // Per spec: Doctor has NO inventory access (including reports)
+        // 🚨 FIX: Doctors are now allowed to view medicines/reports (Read-Only)
         $this->asUser($doctor)
             ->getJson('/api/v1/medicines/stock-out?campus_id=' . $campus->id)
-            ->assertForbidden();
+            ->assertOk(); // Changed from assertForbidden()
     }
 }

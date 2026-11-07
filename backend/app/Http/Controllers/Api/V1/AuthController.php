@@ -47,6 +47,13 @@ class AuthController extends Controller
             ->whereRaw('LOWER(email) = ?', [Str::lower($credentials['email'])])
             ->first();
 
+        // Block system placeholder accounts from logging in.
+        // Minors registered by the clinic share 'unassigned@uic.edu.ph'
+        // and must never be able to authenticate with it.
+        if (! $user || Str::lower($user->email) === 'unassigned@uic.edu.ph') {
+            return response()->json(['message' => 'The provided credentials are invalid.'], 401);
+        }
+
         if (
             ! $user
             || ! $user->is_active

@@ -42,6 +42,29 @@ export interface LookupRecord {
   code?: string;
 }
 
+export interface PatientEnrollment {
+  id: number;
+  patient_id: number;
+  campus_id: number;
+  category: 'grade_school' | 'high_school' | 'senior_high_school' | 'college' | 'employee';
+  student_level: 'basic' | 'college' | null;
+  grade_level: string | null;
+  course_program: string | null;
+  year_level: string | null;
+  section: string | null;
+  student_id_number: string | null;
+  employee_id: string | null;
+  employee_type: string | null;
+  office_unit_department: string | null;
+  position_job_title: string | null;
+  employment_status: string | null;
+  valid_from: string;
+  valid_to: string | null;
+  is_current: boolean;
+  change_reason: string | null;
+  campus?: LookupRecord;
+}
+
 export interface Patient {
   id: number;
   user_id: number;
@@ -68,6 +91,7 @@ export interface Patient {
   section?: string | null;
   parent_guardian_name?: string | null;
   parent_contact_number?: string | null;
+  parent_secondary_contact_number?: string | null;
   parent_address?: string | null;
   immunization_status?: string | null;
   fit_for_school?: boolean | null;
@@ -83,9 +107,48 @@ export interface Patient {
   fit_to_work?: boolean | null;
   blood_type?: string | null;
   philhealth_number?: string | null;
+  
+  // New Medical, JHS, SHS, College & Signature Fields
+  current_medications?: string | null;
+  medication_instructions?: string | null;
+  preferred_hospital?: string | null;
+  growth_pubertal_disclosure?: string | null;
+  self_carry_permit?: boolean | null;
+  extracurricular_clearance?: boolean | null;
+  counseling_authorization?: boolean | null;
+  otc_consent_given?: boolean | null;
+  sports_clearance?: boolean | null;
+  hazard_disclosure?: string | null;
+  work_immersion_clearance?: boolean | null;
+  self_consent_18plus?: boolean | null;
+  immunization_titer_proof?: boolean | null;
+  ferpa_hipaa_waiver?: boolean | null;
+  dorm_housing_profile?: string | null;
+  substance_abuse_history?: string | null;
+  insurance_provider?: string | null;
+  insurance_policy_number?: string | null;
+  guardian_signature_base64?: string | null;
+  guardian_printed_name?: string | null;
+  guardian_relationship?: string | null;
+  signature_ip_address?: string | null;
+  signature_timestamp?: string | null;
+
+  // Relationships
   user?: UserRecord;
   campus?: LookupRecord | null;
   department?: LookupRecord | null;
+  current_enrollment?: PatientEnrollment | null;
+}
+
+export interface PatientIdentifyMatch {
+  patient_id: number;
+  patient_number: string;
+  first_name: string;
+  last_name: string;
+  birth_date: string;
+  has_user_account: boolean;
+  current_enrollment: PatientEnrollment | null;
+  last_visit_at: string | null;
 }
 
 export interface MedicalRecord {
@@ -121,6 +184,7 @@ export interface Referral {
 export interface Consultation {
   id: number;
   patient_id: number;
+  patient_enrollment_id?: number | null; // <-- ADDED
   nurse_id?: number | null;
   consultation_type: string;
   status: string;
@@ -147,6 +211,7 @@ export interface Consultation {
   referral_notes?: string | null;
 
   patient?: Patient;
+  patientEnrollment?: PatientEnrollment | null; // <-- ADDED
   nurse?: UserRecord | null;
   referral?: Referral | null;
   medicalRecord?: MedicalRecord | null;

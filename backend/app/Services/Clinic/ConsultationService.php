@@ -14,8 +14,10 @@ use Throwable;
 
 class ConsultationService
 {
-    public function __construct(private readonly AuditLogService $auditLogService)
-    {
+    public function __construct(
+        private readonly AuditLogService $auditLogService,
+        private readonly EnrollmentService $enrollmentService,
+    ) {
     }
 
     /**
@@ -30,6 +32,7 @@ class ConsultationService
         }
 
         $patient = $this->resolveTargetPatient($user, $payload);
+        $currentEnrollment = $this->enrollmentService->currentFor($patient);
 
         $consultationType = (string) $payload['consultation_type'];
         $isWalkIn = $consultationType === 'walk_in';
@@ -54,6 +57,7 @@ class ConsultationService
 
         $consultation = Consultation::create([
             'patient_id' => $patient->id,
+            'patient_enrollment_id' => $currentEnrollment?->id,
             'nurse_id' => in_array($role, ['nurse', 'coordinator'], true) ? $user->id : null,
             'consultation_type' => $consultationType,
             'status' => $status,

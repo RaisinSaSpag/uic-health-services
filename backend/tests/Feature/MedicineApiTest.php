@@ -11,7 +11,7 @@ class MedicineApiTest extends TestCase
     use RefreshDatabase;
 
     // ------------------------------------------------------------
-    // LIST / SEARCH / SHOW (Nurses CAN read)
+    // LIST / SEARCH / SHOW (Nurses, Coordinators, Doctors CAN read)
     // ------------------------------------------------------------
 
     public function test_nurse_can_list_medicines(): void
@@ -40,8 +40,16 @@ class MedicineApiTest extends TestCase
         $response->assertOk()->assertJsonPath('name', 'Ibuprofen 400mg');
     }
 
+    public function test_doctor_can_read_medicines(): void
+    {
+        $doctor = $this->createUserWithRole('doctor');
+        Medicine::factory()->count(2)->create();
+        $response = $this->asUser($doctor)->getJson('/api/v1/medicines');
+        $response->assertOk()->assertJsonCount(2);
+    }
+
     // ------------------------------------------------------------
-    // CREATE (Coordinator ONLY)
+    // CREATE (Nurse + Coordinator CAN create)
     // ------------------------------------------------------------
 
     public function test_coordinator_can_create_a_medicine(): void
@@ -54,6 +62,17 @@ class MedicineApiTest extends TestCase
         $response->assertCreated()->assertJsonPath('name', 'Biogesic 500mg');
         $this->assertDatabaseHas('medicines', ['name' => 'Biogesic 500mg', 'category' => 'Pain Relief']);
         $this->assertDatabaseHas('audit_logs', ['action' => 'medicine.created', 'entity_type' => 'medicine']);
+    }
+
+    public function test_nurse_can_create_a_medicine(): void
+    {
+        $nurse = $this->createUserWithRole('nurse');
+        $response = $this->asUser($nurse)->postJson('/api/v1/medicines', [
+            'name' => 'Nurse Medicine',
+            'category' => 'Test',
+        ]);
+        $response->assertCreated();
+        $this->assertDatabaseHas('medicines', ['name' => 'Nurse Medicine']);
     }
 
     public function test_create_medicine_fails_with_duplicate_name(): void
@@ -75,7 +94,7 @@ class MedicineApiTest extends TestCase
     }
 
     // ------------------------------------------------------------
-    // UPDATE (Coordinator ONLY)
+    // UPDATE (Nurse + Coordinator CAN update)
     // ------------------------------------------------------------
 
     public function test_coordinator_can_update_a_medicine(): void
@@ -87,8 +106,17 @@ class MedicineApiTest extends TestCase
         $this->assertDatabaseHas('medicines', ['id' => $medicine->id, 'name' => 'New Name']);
     }
 
+    public function test_nurse_can_update_a_medicine(): void
+    {
+        $nurse = $this->createUserWithRole('nurse');
+        $medicine = Medicine::factory()->create(['name' => 'Old Name']);
+        $response = $this->asUser($nurse)->patchJson("/api/v1/medicines/{$medicine->id}", ['name' => 'New Name']);
+        $response->assertOk();
+        $this->assertDatabaseHas('medicines', ['id' => $medicine->id, 'name' => 'New Name']);
+    }
+
     // ------------------------------------------------------------
-    // DELETE (Coordinator ONLY)
+    // DELETE (Nurse + Coordinator CAN delete)
     // ------------------------------------------------------------
 
     public function test_coordinator_can_delete_a_medicine_without_stock(): void
@@ -100,35 +128,43 @@ class MedicineApiTest extends TestCase
         $this->assertDatabaseMissing('medicines', ['id' => $medicine->id]);
     }
 
-    // ------------------------------------------------------------
-    // ROLE RESTRICTIONS — Nurse blocked from write operations
-    // ------------------------------------------------------------
-
-    public function test_nurse_cannot_create_a_medicine(): void
-    {
-        $nurse = $this->createUserWithRole('nurse');
-        $response = $this->asUser($nurse)->postJson('/api/v1/medicines', [
-            'name' => 'Test Medicine',
-            'category' => 'Test',
-        ]);
-        $response->assertForbidden();
-        $this->assertDatabaseMissing('medicines', ['name' => 'Test Medicine']);
-    }
-
-    public function test_nurse_cannot_update_a_medicine(): void
-    {
-        $nurse = $this->createUserWithRole('nurse');
-        $medicine = Medicine::factory()->create(['name' => 'Original']);
-        $response = $this->asUser($nurse)->patchJson("/api/v1/medicines/{$medicine->id}", ['name' => 'Hacked']);
-        $response->assertForbidden();
-        $this->assertDatabaseHas('medicines', ['id' => $medicine->id, 'name' => 'Original']);
-    }
-
-    public function test_nurse_cannot_delete_a_medicine(): void
+    public function test_nurse_can_delete_a_medicine(): void
     {
         $nurse = $this->createUserWithRole('nurse');
         $medicine = Medicine::factory()->create();
         $response = $this->asUser($nurse)->deleteJson("/api/v1/medicines/{$medicine->id}");
+        $response->assertOk();
+        $this->assertDatabaseMissing('medicines', ['id' => $medicine->id]);
+    }
+
+    // ------------------------------------------------------------
+    // DOCTOR — Read-only access
+    // ------------------------------------------------------------
+
+    public function test_doctor_cannot_create_a_medicine(): void
+    {
+        $doctor = $this->createUserWithRole('doctor');
+        $response = $this->asUser($doctor)->postJson('/api/v1/medicines', [
+            'name' => 'Test Medicine',
+            'category' => 'Test',
+        ]);
+        $response->assertForbidden();
+    }
+
+    public function test_doctor_cannot_update_a_medicine(): void
+    {
+        $doctor = $this->createUserWithRole('doctor');
+        $medicine = Medicine::factory()->create(['name' => 'Original']);
+        $response = $this->asUser($doctor)->patchJson("/api/v1/medicines/{$medicine->id}", ['name' => 'Hacked']);
+        $response->assertForbidden();
+        $this->assertDatabaseHas('medicines', ['id' => $medicine->id, 'name' => 'Original']);
+    }
+
+    public function test_doctor_cannot_delete_a_medicine(): void
+    {
+        $doctor = $this->createUserWithRole('doctor');
+        $medicine = Medicine::factory()->create();
+        $response = $this->asUser($doctor)->deleteJson("/api/v1/medicines/{$medicine->id}");
         $response->assertForbidden();
         $this->assertDatabaseHas('medicines', ['id' => $medicine->id]);
     }
@@ -145,24 +181,5 @@ class MedicineApiTest extends TestCase
             'category' => 'Test',
         ]);
         $response->assertForbidden();
-    }
-
-    // ------------------------------------------------------------
-    // DOCTOR — No inventory access at all
-    // ------------------------------------------------------------
-
-    public function test_doctor_has_no_inventory_access(): void
-    {
-        $doctor = $this->createUserWithRole('doctor');
-        Medicine::factory()->create();
-
-        // Doctor cannot even list medicines (per role:doctor restriction)
-        $this->asUser($doctor)->getJson('/api/v1/medicines')->assertForbidden();
-
-        // Doctor cannot create medicines
-        $this->asUser($doctor)->postJson('/api/v1/medicines', [
-            'name' => 'Test',
-            'category' => 'Test',
-        ])->assertForbidden();
     }
 }
