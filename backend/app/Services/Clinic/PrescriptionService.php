@@ -4,6 +4,8 @@ namespace App\Services\Clinic;
 
 use App\Models\Prescription;
 use App\Models\MedicineStockIn;
+use App\Models\User;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -16,7 +18,6 @@ class PrescriptionService
 
     /**
      * Create a new prescription.
-     * NOTE: Order matches controller call: create(array $payload, int $actorId)
      */
     public function create(array $payload, int $actorId): Prescription
     {
@@ -30,22 +31,18 @@ class PrescriptionService
         if ($validated['consultation_id'] <= 0) {
             throw new RuntimeException('Consultation is required.');
         }
-
         if ($validated['medicine_id'] <= 0) {
             throw new RuntimeException('Medicine is required.');
         }
-
         if ($validated['quantity'] <= 0) {
             throw new RuntimeException('Quantity must be greater than zero.');
         }
 
-        // Verify consultation exists
         $consultationExists = \App\Models\Consultation::where('id', $validated['consultation_id'])->exists();
         if (!$consultationExists) {
             throw new RuntimeException('Consultation not found.');
         }
 
-        // Verify medicine exists
         $medicineExists = \App\Models\Medicine::where('id', $validated['medicine_id'])->exists();
         if (!$medicineExists) {
             throw new RuntimeException('Medicine not found.');
@@ -70,7 +67,7 @@ class PrescriptionService
     }
 
     /**
-     * Dispense a prescription with strict campus authorization.
+     * Dispense a prescription with strict campus authorization (Manual batch).
      */
     public function dispense(int $prescriptionId, array $payload, int $nurseId): Prescription
     {
@@ -81,58 +78,142 @@ class PrescriptionService
         }
 
         return DB::transaction(function () use ($prescriptionId, $stockInId, $nurseId) {
-            // 1. Lock the prescription to prevent double-dispensing
             $prescription = Prescription::lockForUpdate()->find($prescriptionId);
-
             if (!$prescription) {
                 throw new RuntimeException('Prescription not found.');
             }
-
             if ($prescription->status !== 'pending') {
                 throw new RuntimeException('Only pending prescriptions can be dispensed.');
             }
 
-            // 2. Load the nurse to enforce campus rules
-            $nurse = \App\Models\User::with('role')->find($nurseId);
+            $nurse = User::with('role')->find($nurseId);
             if (!$nurse) {
                 throw new RuntimeException('Acting user not found.');
             }
 
-            // 3. Load the stock batch
             $stockIn = MedicineStockIn::lockForUpdate()->find($stockInId);
             if (!$stockIn) {
                 throw new RuntimeException('Stock-in record not found.');
             }
 
-            // 4. Verify medicine matches
             if ((int) $stockIn->medicine_id !== (int) $prescription->medicine_id) {
                 throw new RuntimeException('The selected stock batch does not match the prescribed medicine.');
             }
 
-            // 5. Verify campus authorization (Nurse = own campus, Coordinator = any)
             $roleName = strtolower((string) $nurse->role?->name);
             if ($roleName !== 'coordinator' && (int) $nurse->campus_id !== (int) $stockIn->campus_id) {
                 throw new RuntimeException('You do not have permission to dispense stock from another campus.');
             }
 
-            // 6. Deduct stock
             $this->inventoryService->dispense([
                 'stock_in_id' => $stockInId,
                 'quantity_dispensed' => $prescription->quantity,
             ], $nurseId);
 
-            // 7. Mark prescription as dispensed
             $prescription->update([
                 'dispensed_by' => $nurseId,
                 'dispensed_at' => now(),
                 'status' => 'dispensed',
             ]);
 
-            // 8. Audit
             $this->auditLogService->record($nurseId, 'prescription.dispensed', 'prescription', $prescription->id, [
                 'stock_in_id' => $stockInId,
                 'quantity' => $prescription->quantity,
                 'campus_id' => $stockIn->campus_id,
+            ]);
+
+            return $prescription->fresh();
+        });
+    }
+
+    /**
+     * FIFO Dispense — auto-picks the oldest non-expired batch from the nurse's campus.
+     */
+    public function dispenseFifo(int $prescriptionId, int $nurseId): Prescription
+    {
+        return DB::transaction(function () use ($prescriptionId, $nurseId) {
+            $prescription = Prescription::lockForUpdate()->find($prescriptionId);
+            if (!$prescription) {
+                throw new RuntimeException('Prescription not found.');
+            }
+            if ($prescription->status !== 'pending') {
+                throw new RuntimeException('Only pending prescriptions can be dispensed.');
+            }
+
+            $nurse = User::with('role')->find($nurseId);
+            if (!$nurse) {
+                throw new RuntimeException('Acting user not found.');
+            }
+
+            $campusId = (int) $nurse->campus_id;
+            if ($campusId <= 0) {
+                throw new RuntimeException('Acting user has no assigned campus.');
+            }
+
+            // Find oldest non-expired batch with available stock at this campus
+            $today = Carbon::today()->toDateString();
+            $batch = MedicineStockIn::query()
+                ->where('medicine_id', (int) $prescription->medicine_id)
+                ->where('campus_id', $campusId)
+                ->where(function ($q) use ($today) {
+                    $q->whereNull('expiration_date')
+                      ->orWhere('expiration_date', '>=', $today);
+                })
+                ->whereRaw('quantity > (SELECT COALESCE(SUM(quantity_dispensed), 0) FROM medicine_stock_out WHERE medicine_stock_out.stock_in_id = medicine_stock_in.id)')
+                ->orderBy('expiration_date', 'asc')
+                ->orderBy('date_received', 'asc')
+                ->lockForUpdate()
+                ->first();
+
+            if (!$batch) {
+                throw new RuntimeException('No available stock of this medicine at your campus. Mark it as unavailable instead.');
+            }
+
+            // Deduct stock via existing service
+            $this->inventoryService->dispense([
+                'stock_in_id' => $batch->id,
+                'quantity_dispensed' => $prescription->quantity,
+            ], $nurseId);
+
+            // Update prescription record
+            $prescription->update([
+                'dispensed_by' => $nurseId,
+                'dispensed_at' => now(),
+                'status' => 'dispensed',
+            ]);
+
+            // Audit trail
+            $this->auditLogService->record($nurseId, 'prescription.dispensed_fifo', 'prescription', $prescription->id, [
+                'stock_in_id' => $batch->id,
+                'quantity' => $prescription->quantity,
+                'campus_id' => $campusId,
+            ]);
+
+            return $prescription->fresh();
+        });
+    }
+
+    /**
+     * Mark a prescription as unavailable (out of stock).
+     */
+    public function markUnavailable(int $prescriptionId, int $nurseId, ?string $reason = null): Prescription
+    {
+        return DB::transaction(function () use ($prescriptionId, $nurseId, $reason) {
+            $prescription = Prescription::lockForUpdate()->find($prescriptionId);
+            if (!$prescription) {
+                throw new RuntimeException('Prescription not found.');
+            }
+            if ($prescription->status !== 'pending') {
+                throw new RuntimeException('Only pending prescriptions can be marked unavailable.');
+            }
+
+            $prescription->update(['status' => 'unavailable']);
+
+            $this->auditLogService->record($nurseId, 'prescription.marked_unavailable', 'prescription', $prescription->id, [
+                'medicine_id' => $prescription->medicine_id,
+                'quantity' => $prescription->quantity,
+                'prescribed_by' => $prescription->prescribed_by,
+                'reason' => $reason ?? 'Out of stock at campus',
             ]);
 
             return $prescription->fresh();
@@ -145,18 +226,14 @@ class PrescriptionService
     public function cancel(int $prescriptionId, int $actorId): Prescription
     {
         $prescription = Prescription::find($prescriptionId);
-
         if (!$prescription) {
             throw new RuntimeException('Prescription not found.');
         }
-
         if ($prescription->status !== 'pending') {
             throw new RuntimeException('Only pending prescriptions can be cancelled.');
         }
 
-        $prescription->update([
-            'status' => 'cancelled',
-        ]);
+        $prescription->update(['status' => 'cancelled']);
 
         $this->auditLogService->record($actorId, 'prescription.cancelled', 'prescription', $prescription->id, [
             'status' => 'cancelled',
@@ -167,7 +244,6 @@ class PrescriptionService
 
     /**
      * List prescriptions for a specific consultation.
-     * (Renamed from `list` to match the controller's call.)
      */
     public function listForConsultation(int $consultationId): \Illuminate\Database\Eloquent\Collection
     {
@@ -183,11 +259,9 @@ class PrescriptionService
     public function show(int $prescriptionId): Prescription
     {
         $prescription = Prescription::with(['medicine', 'consultation', 'prescribedBy', 'dispensedBy'])->find($prescriptionId);
-
         if (!$prescription) {
             throw new RuntimeException('Prescription not found.');
         }
-
         return $prescription;
     }
 }

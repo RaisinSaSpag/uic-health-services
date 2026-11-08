@@ -66,6 +66,46 @@ class PrescriptionController extends Controller
         );
     }
 
+    /**
+     * FIFO Dispense — auto-picks the oldest non-expired batch from the Nurse's campus.
+     */
+    public function dispenseFifo(Request $request, Prescription $prescription): JsonResponse
+    {
+        try {
+            $updated = $this->prescriptionService->dispenseFifo(
+                $prescription->id,
+                $request->user()->id
+            );
+
+            return response()->json($updated->load(['medicine', 'dispensedBy', 'consultation']));
+        } catch (RuntimeException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
+    }
+
+    /**
+     * Mark a prescription unavailable (out of stock) and notify the Doctor.
+     */
+    public function markUnavailable(Request $request, Prescription $prescription): JsonResponse
+    {
+        $validated = $request->validate(['reason' => ['nullable', 'string', 'max:500']]);
+
+        try {
+            $updated = $this->prescriptionService->markUnavailable(
+                $prescription->id,
+                $request->user()->id,
+                $validated['reason'] ?? null
+            );
+
+            return response()->json($updated->load(['medicine', 'consultation']));
+        } catch (RuntimeException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
+    }
+
+    /**
+     * Manual dispense (legacy, kept for compatibility).
+     */
     public function dispense(Request $request, Prescription $prescription): JsonResponse
     {
         $validated = $request->validate([

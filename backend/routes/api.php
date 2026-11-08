@@ -179,6 +179,8 @@ Route::prefix('v1')->group(function (): void {
 
         Route::middleware('role:nurse,coordinator')->group(function (): void {
             Route::patch('/prescriptions/{prescription}/dispense', [PrescriptionController::class, 'dispense']);
+            Route::post('/prescriptions/{prescription}/dispense-fifo', [PrescriptionController::class, 'dispenseFifo']); // <-- NEW
+            Route::post('/prescriptions/{prescription}/mark-unavailable', [PrescriptionController::class, 'markUnavailable']); // <-- NEW
         });
 
         Route::middleware('role:nurse,coordinator,doctor')->group(function (): void {

@@ -201,6 +201,21 @@ class ReferralService
                 ]
             );
 
+            // 🚨 NEW: Create Prescription records from Doctor's selected medicines
+            $prescriptions = $payload['prescriptions'] ?? [];
+            foreach ($prescriptions as $rx) {
+                if (!empty($rx['medicine_id']) && !empty($rx['quantity']) && (int) $rx['quantity'] > 0) {
+                    \App\Models\Prescription::create([
+                        'consultation_id' => $consultation->id,
+                        'medicine_id' => (int) $rx['medicine_id'],
+                        'quantity' => (int) $rx['quantity'],
+                        'dosage_instructions' => $rx['dosage_instructions'] ?? null,
+                        'status' => 'pending',
+                        'prescribed_by' => $actor->id,
+                    ]);
+                }
+            }
+
             $consultation->update([
                 'status' => 'nurse_finalization',
             ]);

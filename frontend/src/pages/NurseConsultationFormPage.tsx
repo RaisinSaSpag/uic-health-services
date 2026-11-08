@@ -338,23 +338,38 @@ export function NurseConsultationFormPage() {
                 placeholder="Describe the patient's main symptoms…"
               />
             </label>
+            
+            {/* 🚨 FIXED: Diagnosis is now a dropdown */}
             <label className="field">
               <span>
                 Diagnosis (Nurse)
                 {!form.referredToDoctor && ' *'}
               </span>
-              <textarea
-                rows={2}
+              <select
                 required={!form.referredToDoctor}
                 value={form.diagnosis}
                 onChange={(e) => handleChange('diagnosis', e.target.value)}
-                placeholder={
-                  form.referredToDoctor
-                    ? 'Optional — doctor will provide the diagnosis'
-                    : 'Required for triage-only visits'
-                }
-              />
+                disabled={form.referredToDoctor || submitting}
+              >
+                <option value="">
+                  {form.referredToDoctor ? '— Doctor will diagnose —' : '— Select diagnosis —'}
+                </option>
+                <option value="Migraine">Migraine</option>
+                <option value="Tension Headache">Tension Headache</option>
+                <option value="Viral Infection">Viral Infection (Common Cold)</option>
+                <option value="Upper Respiratory Tract Infection">URTI (Flu)</option>
+                <option value="Gastroenteritis">Gastroenteritis (Stomach ache)</option>
+                <option value="Food Poisoning">Food Poisoning</option>
+                <option value="Asthma">Asthma</option>
+                <option value="Hypertension">Hypertension (High Blood Pressure)</option>
+                <option value="Allergic Reaction">Allergic Reaction</option>
+                <option value="Dysmenorrhea">Dysmenorrhea (Menstrual Cramps)</option>
+                <option value="Minor Injury">Minor Injury / Wound</option>
+                <option value="Dental Pain">Dental Pain</option>
+                <option value="Other">Other (Specify in Remarks)</option>
+              </select>
             </label>
+
             <label className="field">
               <span>
                 Remarks / Treatment Plan

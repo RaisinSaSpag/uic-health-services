@@ -10,7 +10,6 @@ import {
   Users,
   GraduationCap,
   Briefcase,
-  AlertCircle,
   Calendar,
   ArrowLeft
 } from 'lucide-react';
@@ -143,7 +142,6 @@ export function NurseReportsPage() {
 
   return (
     <div className="nurse-dashboard-page">
-      {/* SIDEBAR (Hidden during print) */}
       <aside className="nurse-sidebar" style={{ printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' }}>
         <div className="nurse-sidebar-brand">
           <img className="nurse-sidebar-logo" src="/logo-white.png" alt="UIC logo" />
@@ -160,10 +158,8 @@ export function NurseReportsPage() {
         </nav>
       </aside>
 
-      {/* MAIN CONTENT AREA */}
       <div className="nurse-dashboard-main" style={{ padding: '2rem', backgroundColor: '#f8fafc', minHeight: '100vh' }}>
         
-        {/* PAGE HEADER */}
         <header style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.5rem' }}>
           <div>
             <h1 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
@@ -217,7 +213,6 @@ export function NurseReportsPage() {
         )}
       </div>
 
-      {/* AI SUMMARY MODAL */}
       {isAiModalOpen && (
         <div className="modal-backdrop" onClick={() => setIsAiModalOpen(false)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.5)', zIndex: 1000 }}>
           <div className="modal-panel" onClick={e => e.stopPropagation()} style={{ backgroundColor: 'white', borderRadius: '12px', padding: '1.5rem', maxWidth: '500px', width: '90%' }}>
@@ -275,7 +270,18 @@ function TopDiseasesChartCard({ data }: { data: { name: string; count: number }[
             <BarChart data={data} layout="vertical" margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
               <XAxis type="number" tick={{ fontSize: 12, fill: '#64748b' }} axisLine={false} tickLine={false} />
-              <YAxis dataKey="name" type="category" width={120} tick={{ fontSize: 12, fill: '#475569' }} axisLine={false} tickLine={false} />
+              
+              {/* 🚨 FIX: Added tickFormatter to truncate long labels */}
+              <YAxis 
+                dataKey="name" 
+                type="category" 
+                width={140} 
+                tick={{ fontSize: 12, fill: '#475569' }} 
+                axisLine={false} 
+                tickLine={false}
+                tickFormatter={(value: string) => value.length > 18 ? `${value.substring(0, 18)}…` : value}
+              />
+              
               <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }} />
               <Bar dataKey="count" fill="#d44974" radius={[0, 4, 4, 0]} barSize={20} />
             </BarChart>

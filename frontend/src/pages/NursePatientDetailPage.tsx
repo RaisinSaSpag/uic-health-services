@@ -23,6 +23,7 @@ import {
 import { StatusBadge } from '../components/StatusBadge';
 import { PatientProfileTab } from '../components/PatientProfileTab';
 import { EnrollmentRollUpModal } from '../components/EnrollmentRollUpModal';
+import { FinalizeConsultationModal } from '../components/FinalizeConsultationModal'; // 🚨 NEW
 import { useAuth } from '../context/AuthContext';
 import { api } from '../lib/api';
 import { notifyError } from '../lib/alerts';
@@ -143,8 +144,10 @@ export function NursePatientDetailPage() {
   const [loadingConsultation, setLoadingConsultation] = useState(false);
   const [showConsultationMoreDetails, setShowConsultationMoreDetails] = useState(false);
   
-  // 🚨 NEW: State for the Roll-Up modal
+  // 🚨 State for the Roll-Up modal
   const [isRollUpOpen, setRollUpOpen] = useState(false);
+  // 🚨 NEW: State for the Finalize modal
+  const [finalizeConsultation, setFinalizeConsultation] = useState<Consultation | null>(null);
   
   const consultationRequestTokenRef = useRef(0);
 
@@ -375,7 +378,6 @@ export function NursePatientDetailPage() {
                   <p>Campus: {patient.campus?.name ?? 'N/A'} · Profile Type: {patient.student_level ? normalizeText(patient.student_level) : normalizeText(patient.patient_type)}</p>
                 </div>
                 
-                {/* 🚨 NEW: Added the Move Up button here */}
                 <div className="nurse-patient-summary-actions" style={{ display: 'flex', gap: '0.5rem' }}>
                   <button 
                     className="button ghost" 
@@ -492,7 +494,16 @@ export function NursePatientDetailPage() {
                 </section>
               )}
 
-              {/* 🚨 NEW: Render the Modal */}
+              {/* 🚨 NEW: Finalize Modal */}
+              <FinalizeConsultationModal
+                isOpen={finalizeConsultation !== null}
+                onClose={() => setFinalizeConsultation(null)}
+                consultation={finalizeConsultation}
+                onSuccess={() => {
+                  void loadPatientContext();
+                }}
+              />
+
               <EnrollmentRollUpModal 
                 isOpen={isRollUpOpen} 
                 onClose={() => setRollUpOpen(false)} 
@@ -516,6 +527,27 @@ export function NursePatientDetailPage() {
                         </div>
                         <button className="button ghost nurse-consultation-spotlight-close" onClick={closeConsultationModal} type="button">Close</button>
                       </header>
+
+                      {/* 🚨 NEW: Finalize Banner for Nurse Finalization status */}
+                      {selectedConsultation?.status === 'nurse_finalization' && (
+                        <div style={{ padding: '1rem', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', margin: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div>
+                            <p style={{ margin: 0, fontWeight: 600, color: '#166534' }}>Doctor has finalized the referral.</p>
+                            <p className="muted small" style={{ margin: 0 }}>Click to finalize the consultation.</p>
+                          </div>
+                          <button 
+                            className="button primary" 
+                            style={{ background: '#059669', borderColor: '#059669' }} 
+                            onClick={() => {
+                              closeConsultationModal();
+                              setFinalizeConsultation(selectedConsultation);
+                            }} 
+                            type="button"
+                          >
+                            Finalize Consultation
+                          </button>
+                        </div>
+                      )}
 
                       {loadingConsultation && (
                         <p className="nurse-consultation-spotlight-fetching" role="status" aria-live="polite">Updating consultation details...</p>

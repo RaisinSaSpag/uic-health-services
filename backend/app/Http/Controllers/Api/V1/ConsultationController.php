@@ -119,6 +119,7 @@ class ConsultationController extends Controller
             'treatment_plan' => ['nullable', 'string', 'max:3000'],
             'prescription' => ['nullable', 'string', 'max:3000'],
             'follow_up_date' => ['nullable', 'date'],
+            'nurse_finalization_notes' => ['nullable', 'string', 'max:2000'], // <-- ADDED
         ]);
 
         $action = $validated['action'];

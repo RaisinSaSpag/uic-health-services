@@ -41,6 +41,7 @@ class NotificationController extends Controller
         'prescription.created',
         'prescription.dispensed',
         'prescription.cancelled',
+        'prescription.marked_unavailable', // <-- ADDED
     ];
 
     /**
@@ -221,8 +222,6 @@ class NotificationController extends Controller
 
     /**
      * 🚨 SECURITY: resolve the campus ID that should be used for a query.
-     * Nurses/Doctors are always locked to their own campus.
-     * Coordinators may request any campus (or none = their own).
      */
     private function resolveCampusId(Request $request, array $validated): int
     {
@@ -233,7 +232,6 @@ class NotificationController extends Controller
             return (int) ($validated['campus_id'] ?? $me->campus_id ?? 0);
         }
 
-        // Nurses, Doctors: force own campus (ignore client input)
         return (int) ($me->campus_id ?? 0);
     }
 
@@ -284,6 +282,7 @@ class NotificationController extends Controller
             'prescription.created' => "{$actor} created a prescription.",
             'prescription.dispensed' => "{$actor} dispensed a prescription.",
             'prescription.cancelled' => "{$actor} cancelled a prescription.",
+            'prescription.marked_unavailable' => "{$actor} marked a prescription as unavailable.", // <-- ADDED
             default => "{$actor} performed: {$log->action}",
         };
     }
