@@ -12,6 +12,15 @@ class Patient extends Model
 {
     use HasFactory;
 
+    // 🚨 P3-12 FIX: Hide sensitive PHI from API serialization
+    protected $hidden = [
+        'guardian_signature_base64',
+        'signature_ip_address',
+        'substance_abuse_history',
+        'philhealth_number',
+        'insurance_policy_number',
+    ];
+
     protected $fillable = [
         'user_id',
         'campus_id',

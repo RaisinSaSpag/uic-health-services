@@ -167,7 +167,9 @@ class PatientController extends Controller
             $roleName = $validated['patient_type'] === 'employee' ? 'employee' : 'student';
 
             $userEmail = !empty($validated['email']) ? strtolower($validated['email']) : 'unassigned@uic.edu.ph';
-            $userPassword = !empty($validated['email']) ? strtolower($validated['email']) : Str::random(64);
+            
+            // 🚨 P3-6 FIX: Use a secure random password instead of the email
+            $userPassword = Str::random(16);
 
             // 1. Create User
             $user = User::create([
