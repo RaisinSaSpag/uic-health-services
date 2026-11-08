@@ -49,22 +49,33 @@ class InventoryService
             throw new RuntimeException('Expiration date must be after the date received.');
         }
 
-        $stockIn = MedicineStockIn::create([
-            'medicine_id' => $medicineId,
-            'campus_id' => $campusId,
-            'quantity' => $quantity,
-            'date_received' => $dateReceived,
-            'expiration_date' => $expirationDate,
-            'received_by' => $actorId,
-        ]);
+        // 🚨 P2-23 FIX: Validate existence to prevent raw FK errors
+        if (! \App\Models\Medicine::where('id', $medicineId)->exists()) {
+            throw new RuntimeException('Medicine not found.');
+        }
+        if (! \App\Models\Campus::where('id', $campusId)->exists()) {
+            throw new RuntimeException('Campus not found.');
+        }
 
-        $this->auditLogService->record($actorId, 'inventory.stocked_in', 'medicine_stock_in', $stockIn->id, [
-            'medicine_id' => $medicineId,
-            'campus_id' => $campusId,
-            'quantity' => $quantity,
-        ]);
+        // 🚨 P2-23 FIX: Wrap in a transaction so the audit log and stock-in are atomic
+        return DB::transaction(function () use ($medicineId, $campusId, $quantity, $dateReceived, $expirationDate, $actorId) {
+            $stockIn = MedicineStockIn::create([
+                'medicine_id' => $medicineId,
+                'campus_id' => $campusId,
+                'quantity' => $quantity,
+                'date_received' => $dateReceived,
+                'expiration_date' => $expirationDate,
+                'received_by' => $actorId,
+            ]);
 
-        return $stockIn;
+            $this->auditLogService->record($actorId, 'inventory.stocked_in', 'medicine_stock_in', $stockIn->id, [
+                'medicine_id' => $medicineId,
+                'campus_id' => $campusId,
+                'quantity' => $quantity,
+            ]);
+
+            return $stockIn;
+        });
     }
 
     public function dispense(array $payload, int $actorId): MedicineStockOut

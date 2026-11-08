@@ -181,17 +181,14 @@ class UserController extends Controller
         if (array_key_exists('email', $validated)) {
             $newEmail = Str::lower(trim((string) $validated['email']));
 
+            // 🚨 P1-11 FIX: Changed 403 to 422 for non-UIC email (validation failure, not forbidden)
             if (! Str::endsWith($newEmail, '@uic.edu.ph')) {
                 return response()->json([
                     'message' => 'Only UIC email addresses (@uic.edu.ph) are allowed.',
-                ], 403);
+                ], 422);
             }
 
-            if ($newEmail !== $user->email && User::where('email', $newEmail)->exists()) {
-                throw ValidationException::withMessages([
-                    'email' => ['The email has already been taken.'],
-                ]);
-            }
+            // Manual duplicate check removed; handled by Rule::unique above
 
             if ($newEmail !== $user->email) {
                 $updates['email'] = $newEmail;
@@ -263,7 +260,7 @@ class UserController extends Controller
             'first_name' => ['required', 'string', 'max:80'],
             'last_name'  => ['required', 'string', 'max:80'],
             'email'      => ['required', 'email', 'max:150', 'unique:users,email'],
-            'password'   => ['required', 'string', 'min:8', 'max:72'], // 🚨 SECURITY: min 8 chars
+            'password'   => ['required', 'string', 'min:8', 'max:72'],
             'role_name'  => ['required', 'string', Rule::in(['student', 'employee', 'nurse', 'doctor', 'coordinator'])],
             'campus_id'  => ['required', 'integer', 'exists:campuses,id'],
             'is_active'  => ['nullable', 'boolean'],
@@ -271,17 +268,14 @@ class UserController extends Controller
 
         $normalizedEmail = Str::lower((string) $validated['email']);
 
+        // 🚨 P1-11 FIX: Changed 403 to 422 for non-UIC email (validation failure, not forbidden)
         if (! Str::endsWith($normalizedEmail, '@uic.edu.ph')) {
             return response()->json([
                 'message' => 'Only UIC email addresses (@uic.edu.ph) are allowed.',
-            ], 403);
+            ], 422);
         }
 
-        if (User::where('email', $normalizedEmail)->exists()) {
-            throw ValidationException::withMessages([
-                'email' => ['The email has already been taken.'],
-            ]);
-        }
+        // Manual duplicate check removed; handled by 'unique:users,email' above
 
         $roleName = Str::lower((string) $validated['role_name']);
         $role = Role::whereRaw('LOWER(name) = ?', [$roleName])->first();
@@ -319,12 +313,13 @@ class UserController extends Controller
     public function resetPassword(Request $request, User $user): JsonResponse
     {
         $validated = $request->validate([
-            'password' => ['required', 'string', 'min:8', 'max:72'], // 🚨 SECURITY: min 8 chars
+            'password' => ['required', 'string', 'min:8', 'max:72'],
         ]);
 
         $user->update([
             'password' => Hash::make($validated['password']),
-            'must_change_password' => true, // 🚨 SECURITY: coordinator-set passwords are temporary
+            'must_change_password' => true,
+            'tokens_valid_after' => now(), // 🚨 P1-9 FIX: Revoke all existing JWTs on password reset
         ]);
 
         $this->auditLogService->log(

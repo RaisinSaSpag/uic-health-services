@@ -24,10 +24,11 @@ Route::prefix('v1')->group(function (): void {
 
     Route::prefix('auth')->group(function (): void {
         // Staff login (Nurse, Doctor, Coordinator)
-        Route::post('/staff/login', [AuthController::class, 'staffLogin'])->middleware('throttle:100,1');
+        // 🚨 P1-8 FIX: Tightened from 100/min to 10/min for brute-force protection
+        Route::post('/staff/login', [AuthController::class, 'staffLogin'])->middleware('throttle:10,1');
 
         // Student/Employee login
-        Route::post('/student/login', [AuthController::class, 'studentLogin'])->middleware('throttle:100,1');
+        Route::post('/student/login', [AuthController::class, 'studentLogin'])->middleware('throttle:10,1');
 
         Route::middleware(['jwt', 'throttle:60,1'])->group(function (): void {
             Route::get('/me', [AuthController::class, 'me']);
@@ -137,6 +138,10 @@ Route::prefix('v1')->group(function (): void {
         Route::middleware('role:nurse,coordinator')->group(function (): void {
             Route::post('/medicines', [MedicineController::class, 'store']);
             Route::patch('/medicines/{medicine}', [MedicineController::class, 'update']);
+        });
+
+        // 🚨 P1-12 FIX: Only Coordinators can DELETE medicines
+        Route::middleware('role:coordinator')->group(function (): void {
             Route::delete('/medicines/{medicine}', [MedicineController::class, 'destroy']);
         });
 
@@ -178,9 +183,9 @@ Route::prefix('v1')->group(function (): void {
         });
 
         Route::middleware('role:nurse,coordinator')->group(function (): void {
-            Route::patch('/prescriptions/{prescription}/dispense', [PrescriptionController::class, 'dispense']);
-            Route::post('/prescriptions/{prescription}/dispense-fifo', [PrescriptionController::class, 'dispenseFifo']); // <-- NEW
-            Route::post('/prescriptions/{prescription}/mark-unavailable', [PrescriptionController::class, 'markUnavailable']); // <-- NEW
+            // 🚨 P1-5 FIX: Legacy PATCH /dispense removed — use POST /dispense-fifo instead
+            Route::post('/prescriptions/{prescription}/dispense-fifo', [PrescriptionController::class, 'dispenseFifo']);
+            Route::post('/prescriptions/{prescription}/mark-unavailable', [PrescriptionController::class, 'markUnavailable']);
         });
 
         Route::middleware('role:nurse,coordinator,doctor')->group(function (): void {

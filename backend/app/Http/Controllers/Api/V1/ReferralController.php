@@ -7,6 +7,7 @@ use App\Models\Referral;
 use App\Services\Clinic\ReferralService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use RuntimeException;
 
 class ReferralController extends Controller
@@ -76,15 +77,35 @@ class ReferralController extends Controller
             'action' => ['required', 'in:in_progress,complete'],
             'doctor_remarks' => ['nullable', 'string', 'max:3000'],
             'prescription' => ['nullable', 'string', 'max:3000'],
-            'final_diagnosis' => ['nullable', 'string', 'max:3000'],
+            
+            // 🚨 P1-2 FIX: Structured diagnosis categories
+            'final_diagnosis' => [
+                'nullable', 
+                'string', 
+                'max:255',
+                Rule::in([
+                    'Migraine', 'Tension Headache', 'Viral Infection',
+                    'Upper Respiratory Tract Infection', 'Gastroenteritis',
+                    'Food Poisoning', 'Asthma', 'Hypertension',
+                    'Allergic Reaction', 'Dysmenorrhea', 'Minor Injury',
+                    'Dental Pain', 'Other',
+                ]),
+            ],
+            
             'treatment_plan' => ['nullable', 'string', 'max:3000'],
+
+            // 🚨 P1-1 CRITICAL FIX: Add validation rules for the prescriptions array
+            'prescriptions' => ['nullable', 'array'],
+            'prescriptions.*.medicine_id' => ['required', 'integer', 'exists:medicines,id'],
+            'prescriptions.*.quantity' => ['required', 'integer', 'min:1'],
+            'prescriptions.*.dosage_instructions' => ['nullable', 'string', 'max:500'],
         ]);
 
         if ($validated['action'] === 'complete') {
             $request->validate([
                 'doctor_remarks' => ['required', 'string', 'max:3000'],
-                'prescription' => ['required', 'string', 'max:3000'],
-                'final_diagnosis' => ['required', 'string', 'max:3000'],
+                // Note: 'prescription' (free-text) is optional now because the doctor can use the structured dropdown
+                'final_diagnosis' => ['required', 'string', 'max:255'],
                 'treatment_plan' => ['required', 'string', 'max:3000'],
             ]);
         }
@@ -100,16 +121,5 @@ class ReferralController extends Controller
         } catch (RuntimeException $exception) {
             return response()->json(['message' => $exception->getMessage()], 409);
         }
-    }
-
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy(string $id): JsonResponse
-    {
-        return response()->json([
-            'message' => 'Referral delete is not part of current workflow.',
-            'referral_id' => $id,
-        ], 405);
     }
 }

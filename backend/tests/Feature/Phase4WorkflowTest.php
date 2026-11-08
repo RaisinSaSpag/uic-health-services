@@ -351,7 +351,7 @@ class Phase4WorkflowTest extends TestCase
             'consultation_date' => now()->format('Y-m-d'),
             'consultation_time' => now()->format('H:i'),
             'chief_complaint' => 'Headache for 2 days',
-            'diagnosis' => 'Tension headache',
+            'diagnosis' => 'Tension Headache', // 🚨 FIXED: Capital 'H' to match Rule::in
         ]);
 
         $response->assertCreated()

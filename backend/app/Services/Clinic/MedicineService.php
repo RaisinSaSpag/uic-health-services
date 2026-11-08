@@ -111,11 +111,18 @@ class MedicineService
             throw new RuntimeException('Cannot delete a medicine that has stock records. Archive the stock instead.');
         }
 
-        $this->auditLogService->record($actorId, 'medicine.deleted', 'medicine', $medicine->id, [
-            'name' => $medicine->name,
-        ]);
+        // 🚨 P2-17 FIX: Prevent deletion if it is referenced in any prescriptions.
+        if ($medicine->prescriptions()->exists()) {
+            throw new RuntimeException('Cannot delete a medicine that has been prescribed. Archive it instead to preserve medical history.');
+        }
 
-        $medicine->delete();
+        DB::transaction(function () use ($medicine, $actorId) {
+            $this->auditLogService->record($actorId, 'medicine.deleted', 'medicine', $medicine->id, [
+                'name' => $medicine->name,
+            ]);
+
+            $medicine->delete();
+        });
     }
     
     /**

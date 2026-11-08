@@ -26,8 +26,8 @@ class ConsultationController extends Controller
             'consultation_type' => ['nullable', 'in:walk_in,scheduled,injury'],
             'referred_to_doctor' => ['nullable', 'boolean'],
             'submitted_date' => ['nullable', 'date_format:Y-m-d'],
-            'date_from' => ['nullable', 'date_format:Y-m-d'], // <-- ADDED FOR ACADEMIC TERMS
-            'date_to' => ['nullable', 'date_format:Y-m-d'],   // <-- ADDED FOR ACADEMIC TERMS
+            'date_from' => ['nullable', 'date_format:Y-m-d'],
+            'date_to' => ['nullable', 'date_format:Y-m-d'],
             'patient_id' => ['nullable', 'integer', 'exists:patients,id'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
@@ -64,11 +64,19 @@ class ConsultationController extends Controller
             'chief_complaint' => ['required', 'string', 'max:1000'],
             'symptoms' => ['nullable', 'string', 'max:2000'],
 
+            // 🚨 P1-2 FIX: Structured diagnosis categories
             'diagnosis' => [
                 Rule::requiredIf($isStaff && ! $isReferral),
                 'nullable',
                 'string',
-                'max:1000',
+                'max:255',
+                Rule::in([
+                    'Migraine', 'Tension Headache', 'Viral Infection',
+                    'Upper Respiratory Tract Infection', 'Gastroenteritis',
+                    'Food Poisoning', 'Asthma', 'Hypertension',
+                    'Allergic Reaction', 'Dysmenorrhea', 'Minor Injury',
+                    'Dental Pain', 'Other',
+                ]),
             ],
 
             'remarks' => [
@@ -115,11 +123,25 @@ class ConsultationController extends Controller
             'triage_notes' => ['nullable', 'string', 'max:2000'],
             'referred_to_doctor' => ['nullable', 'boolean'],
             'summary' => ['nullable', 'string', 'max:3000'],
-            'final_diagnosis' => ['nullable', 'string', 'max:255'],
+            
+            // 🚨 P1-2 FIX: Structured diagnosis categories
+            'final_diagnosis' => [
+                'nullable',
+                'string',
+                'max:255',
+                Rule::in([
+                    'Migraine', 'Tension Headache', 'Viral Infection',
+                    'Upper Respiratory Tract Infection', 'Gastroenteritis',
+                    'Food Poisoning', 'Asthma', 'Hypertension',
+                    'Allergic Reaction', 'Dysmenorrhea', 'Minor Injury',
+                    'Dental Pain', 'Other',
+                ]),
+            ],
+            
             'treatment_plan' => ['nullable', 'string', 'max:3000'],
             'prescription' => ['nullable', 'string', 'max:3000'],
             'follow_up_date' => ['nullable', 'date'],
-            'nurse_finalization_notes' => ['nullable', 'string', 'max:2000'], // <-- ADDED
+            'nurse_finalization_notes' => ['nullable', 'string', 'max:2000'],
         ]);
 
         $action = $validated['action'];
@@ -133,7 +155,13 @@ class ConsultationController extends Controller
         if ($action === 'complete') {
             $request->validate([
                 'summary' => ['required', 'string', 'max:3000'],
-                'final_diagnosis' => ['required', 'string', 'max:255'],
+                'final_diagnosis' => ['required', 'string', 'max:255', Rule::in([
+                    'Migraine', 'Tension Headache', 'Viral Infection',
+                    'Upper Respiratory Tract Infection', 'Gastroenteritis',
+                    'Food Poisoning', 'Asthma', 'Hypertension',
+                    'Allergic Reaction', 'Dysmenorrhea', 'Minor Injury',
+                    'Dental Pain', 'Other',
+                ])],
                 'treatment_plan' => ['required', 'string', 'max:3000'],
             ]);
         }

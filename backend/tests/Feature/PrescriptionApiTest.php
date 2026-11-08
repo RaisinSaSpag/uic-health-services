@@ -41,7 +41,6 @@ class PrescriptionApiTest extends TestCase
         $consultation = Consultation::factory()->create(['patient_id' => $patient->id]);
         $medicine = Medicine::factory()->create();
 
-        // 🚨 Link the doctor to the consultation
         $this->seedDoctorReferral($doctor, $consultation);
 
         $response = $this->asUser($doctor)->postJson('/api/v1/prescriptions', [
@@ -89,7 +88,6 @@ class PrescriptionApiTest extends TestCase
         $patient = Patient::factory()->create(['user_id' => $student->id]);
         $consultation = Consultation::factory()->create(['patient_id' => $patient->id]);
 
-        // 🚨 Link the doctor to the consultation
         $this->seedDoctorReferral($doctor, $consultation);
 
         Prescription::factory()->count(2)->create([
@@ -109,7 +107,6 @@ class PrescriptionApiTest extends TestCase
         $doctor = $this->createUserWithRole('doctor');
         $prescription = Prescription::factory()->create();
 
-        // 🚨 Link the doctor to the consultation of the prescription
         $consultation = Consultation::find($prescription->consultation_id);
         $this->seedDoctorReferral($doctor, $consultation);
 
@@ -119,16 +116,14 @@ class PrescriptionApiTest extends TestCase
     }
 
     // ------------------------------------------------------------
-    // DISPENSE — THE INTEGRATION POINT
+    // DISPENSE — FIFO ENDPOINT
     // ------------------------------------------------------------
 
     public function test_nurse_can_dispense_prescription(): void
     {
-        $doctor = $this->createUserWithRole('doctor');
         $nurse = $this->createUserWithRole('nurse');
 
         $campus = Campus::query()->first();
-        // Set the nurse's campus so the dispense check passes
         $nurse->update(['campus_id' => $campus->id]);
 
         $medicine = Medicine::factory()->create();
@@ -136,6 +131,8 @@ class PrescriptionApiTest extends TestCase
             'medicine_id' => $medicine->id,
             'campus_id' => $campus->id,
             'quantity' => 100,
+            'expiration_date' => now()->addYear()->toDateString(),
+            'date_received' => now()->toDateString(),
         ]);
 
         $student = $this->createUserWithRole('student');
@@ -149,9 +146,8 @@ class PrescriptionApiTest extends TestCase
             'status' => 'pending',
         ]);
 
-        $response = $this->asUser($nurse)->patchJson(
-            "/api/v1/prescriptions/{$prescription->id}/dispense",
-            ['stock_in_id' => $stockIn->id]
+        $response = $this->asUser($nurse)->postJson(
+            "/api/v1/prescriptions/{$prescription->id}/dispense-fifo"
         );
 
         $response->assertOk()->assertJsonPath('status', 'dispensed');
@@ -168,7 +164,7 @@ class PrescriptionApiTest extends TestCase
         ]);
 
         $this->assertDatabaseHas('audit_logs', [
-            'action' => 'prescription.dispensed',
+            'action' => 'prescription.dispensed_fifo',
             'entity_type' => 'prescription',
             'entity_id' => $prescription->id,
         ]);
@@ -181,10 +177,12 @@ class PrescriptionApiTest extends TestCase
         $nurse->update(['campus_id' => $campus->id]);
 
         $medicine = Medicine::factory()->create();
-        $stockIn = MedicineStockIn::factory()->create([
+        MedicineStockIn::factory()->create([
             'medicine_id' => $medicine->id,
             'campus_id' => $campus->id,
             'quantity' => 5,
+            'expiration_date' => now()->addYear()->toDateString(),
+            'date_received' => now()->toDateString(),
         ]);
 
         $prescription = Prescription::factory()->create([
@@ -193,12 +191,11 @@ class PrescriptionApiTest extends TestCase
             'status' => 'pending',
         ]);
 
-        $response = $this->asUser($nurse)->patchJson(
-            "/api/v1/prescriptions/{$prescription->id}/dispense",
-            ['stock_in_id' => $stockIn->id]
+        $response = $this->asUser($nurse)->postJson(
+            "/api/v1/prescriptions/{$prescription->id}/dispense-fifo"
         );
 
-        $response->assertStatus(409);
+        $response->assertStatus(422);
     }
 
     public function test_dispense_fails_if_already_dispensed(): void
@@ -206,12 +203,64 @@ class PrescriptionApiTest extends TestCase
         $nurse = $this->createUserWithRole('nurse');
         $prescription = Prescription::factory()->create(['status' => 'dispensed']);
 
-        $response = $this->asUser($nurse)->patchJson(
-            "/api/v1/prescriptions/{$prescription->id}/dispense",
-            ['stock_in_id' => 1]
+        $response = $this->asUser($nurse)->postJson(
+            "/api/v1/prescriptions/{$prescription->id}/dispense-fifo"
         );
 
-        $response->assertStatus(409);
+        $response->assertStatus(422)
+            ->assertJsonPath('message', 'Only pending prescriptions can be dispensed.');
+    }
+
+    /**
+     * FIFO behavior: when multiple non-expired batches exist at the nurse's campus,
+     * the oldest-by-expiration-date (then oldest-by-date_received) is used.
+     * (Replaces the old "wrong medicine batch" test, which was structurally
+     * impossible once the manual PATCH /dispense endpoint was removed.)
+     */
+    public function test_dispense_fifo_picks_oldest_batch(): void
+    {
+        $nurse = $this->createUserWithRole('nurse');
+        $campus = Campus::query()->first();
+        $nurse->update(['campus_id' => $campus->id]);
+
+        $medicine = Medicine::factory()->create();
+
+        $laterExpiry = MedicineStockIn::factory()->create([
+            'medicine_id' => $medicine->id,
+            'campus_id' => $campus->id,
+            'quantity' => 100,
+            'expiration_date' => now()->addYear()->toDateString(),
+            'date_received' => now()->toDateString(),
+        ]);
+
+        $soonerExpiry = MedicineStockIn::factory()->create([
+            'medicine_id' => $medicine->id,
+            'campus_id' => $campus->id,
+            'quantity' => 100,
+            'expiration_date' => now()->addMonths(3)->toDateString(),
+            'date_received' => now()->toDateString(),
+        ]);
+
+        $prescription = Prescription::factory()->create([
+            'medicine_id' => $medicine->id,
+            'quantity' => 10,
+            'status' => 'pending',
+        ]);
+
+        $response = $this->asUser($nurse)->postJson(
+            "/api/v1/prescriptions/{$prescription->id}/dispense-fifo"
+        );
+
+        $response->assertOk()->assertJsonPath('status', 'dispensed');
+
+        // The sooner-expiring batch should have been consumed.
+        $this->assertDatabaseHas('medicine_stock_out', [
+            'stock_in_id' => $soonerExpiry->id,
+            'quantity_dispensed' => 10,
+        ]);
+        $this->assertDatabaseMissing('medicine_stock_out', [
+            'stock_in_id' => $laterExpiry->id,
+        ]);
     }
 
     // ------------------------------------------------------------
@@ -223,7 +272,6 @@ class PrescriptionApiTest extends TestCase
         $doctor = $this->createUserWithRole('doctor');
         $prescription = Prescription::factory()->create(['status' => 'pending']);
 
-        // 🚨 Link the doctor to the consultation
         $consultation = Consultation::find($prescription->consultation_id);
         $this->seedDoctorReferral($doctor, $consultation);
 
@@ -262,9 +310,8 @@ class PrescriptionApiTest extends TestCase
         $doctor = $this->createUserWithRole('doctor');
         $prescription = Prescription::factory()->create(['status' => 'pending']);
 
-        $response = $this->asUser($doctor)->patchJson(
-            "/api/v1/prescriptions/{$prescription->id}/dispense",
-            ['stock_in_id' => 1]
+        $response = $this->asUser($doctor)->postJson(
+            "/api/v1/prescriptions/{$prescription->id}/dispense-fifo"
         );
 
         $response->assertForbidden();
@@ -289,7 +336,6 @@ class PrescriptionApiTest extends TestCase
         $patient = Patient::factory()->create(['user_id' => $student->id]);
         $consultation = Consultation::factory()->create(['patient_id' => $patient->id]);
 
-        // Link doctor to consultation so the access check passes
         $this->seedDoctorReferral($doctor, $consultation);
 
         $response = $this->asUser($doctor)->postJson('/api/v1/prescriptions', [
@@ -299,45 +345,5 @@ class PrescriptionApiTest extends TestCase
         ]);
         $response->assertStatus(422)
             ->assertJsonPath('message', 'Medicine not found.');
-    }
-
-    public function test_nurse_cannot_dispense_wrong_medicine_batch(): void
-    {
-        $doctor = $this->createUserWithRole('doctor');
-        $nurse = $this->createUserWithRole('nurse');
-        $campus = Campus::query()->first();
-        $nurse->update(['campus_id' => $campus->id]);
-
-        $medicineA = Medicine::factory()->create(['name' => 'Meds A']);
-        $medicineB = Medicine::factory()->create(['name' => 'Meds B']);
-
-        $stockIn = MedicineStockIn::factory()->create([
-            'medicine_id' => $medicineB->id,
-            'campus_id' => $campus->id,
-            'quantity' => 100,
-        ]);
-
-        $student = $this->createUserWithRole('student');
-        $patient = Patient::factory()->create(['user_id' => $student->id]);
-        $consultation = Consultation::factory()->create(['patient_id' => $patient->id]);
-
-        $prescription = Prescription::factory()->create([
-            'consultation_id' => $consultation->id,
-            'medicine_id' => $medicineA->id,
-            'quantity' => 10,
-            'status' => 'pending',
-        ]);
-
-        $response = $this->asUser($nurse)->patchJson("/api/v1/prescriptions/{$prescription->id}/dispense", [
-            'stock_in_id' => $stockIn->id,
-        ]);
-
-        $response->assertStatus(409)
-            ->assertJsonPath('message', 'The selected stock batch does not match the prescribed medicine.');
-
-        $this->assertDatabaseHas('prescriptions', [
-            'id' => $prescription->id,
-            'status' => 'pending',
-        ]);
     }
 }

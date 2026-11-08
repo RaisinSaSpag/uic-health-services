@@ -32,7 +32,11 @@ class ConsultationService
         }
 
         $patient = $this->resolveTargetPatient($user, $payload);
-        $currentEnrollment = $this->enrollmentService->currentFor($patient);
+        
+        // 🚨 P2-6 FIX: Use effectiveOn so backdated consultations get the correct historical enrollment
+        $consultationDateInput = $payload['consultation_date'] ?? null;
+        $enrollmentDate = $consultationDateInput ? $consultationDateInput : now();
+        $currentEnrollment = $this->enrollmentService->effectiveOn($patient, $enrollmentDate);
 
         $consultationType = (string) $payload['consultation_type'];
         $isWalkIn = $consultationType === 'walk_in';
@@ -290,6 +294,14 @@ class ConsultationService
             throw new RuntimeException('Consultation cannot be triaged in its current status.');
         }
 
+        // 🚨 P2-11 FIX: Cannot unrefer if the doctor is actively handling it.
+        if ($consultation->status === 'referred_to_doctor' && !$payload['referred_to_doctor']) {
+            $activeReferral = $consultation->referral;
+            if ($activeReferral && $activeReferral->status === 'in_progress') {
+                throw new RuntimeException('Cannot cancel the referral while the doctor is actively assessing the patient.');
+            }
+        }
+
         $oldValues = [
             'status' => $consultation->status,
             'triage_notes' => $consultation->triage_notes,
@@ -337,6 +349,15 @@ class ConsultationService
             throw new RuntimeException('Cancelled consultations cannot be completed.');
         }
 
+        // 🚨 P2-10 FIX: Cannot complete consultation if there are pending prescriptions.
+        $pendingPrescriptions = \App\Models\Prescription::where('consultation_id', $consultation->id)
+            ->where('status', 'pending')
+            ->exists();
+            
+        if ($pendingPrescriptions) {
+            throw new RuntimeException('Cannot complete consultation while there are pending prescriptions. Please dispense or mark them unavailable first.');
+        }
+
         $summary = (string) $payload['summary'];
         $finalDiagnosis = (string) $payload['final_diagnosis'];
         $treatmentPlan = (string) $payload['treatment_plan'];
@@ -370,6 +391,7 @@ class ConsultationService
                 'treatment_plan' => $treatmentPlan,
                 'prescription' => $prescription,
                 'follow_up_date' => $payload['follow_up_date'] ?? null,
+                'nurse_finalization_notes' => $payload['nurse_finalization_notes'] ?? null, // 🚨 P2-9 FIX
                 'finalized_at' => now(),
             ];
 

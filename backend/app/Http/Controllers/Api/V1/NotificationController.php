@@ -40,8 +40,9 @@ class NotificationController extends Controller
         'consultation.nurse_finalization',
         'prescription.created',
         'prescription.dispensed',
+        'prescription.dispensed_fifo', // 🚨 P2-20 FIX
         'prescription.cancelled',
-        'prescription.marked_unavailable', // <-- ADDED
+        'prescription.marked_unavailable',
     ];
 
     /**
@@ -281,8 +282,9 @@ class NotificationController extends Controller
             'consultation.nurse_finalization' => "{$actor} sent a consultation for finalization.",
             'prescription.created' => "{$actor} created a prescription.",
             'prescription.dispensed' => "{$actor} dispensed a prescription.",
+            'prescription.dispensed_fifo' => "{$actor} dispensed a prescription (FIFO).", // 🚨 P2-20 FIX
             'prescription.cancelled' => "{$actor} cancelled a prescription.",
-            'prescription.marked_unavailable' => "{$actor} marked a prescription as unavailable.", // <-- ADDED
+            'prescription.marked_unavailable' => "{$actor} marked a prescription as unavailable.",
             default => "{$actor} performed: {$log->action}",
         };
     }

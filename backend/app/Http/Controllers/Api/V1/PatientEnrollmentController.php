@@ -55,6 +55,18 @@ class PatientEnrollmentController extends Controller
             'change_reason' => ['nullable', 'string', 'max:100'],
         ]);
 
+        // 🚨 P1-6 FIX: Non-coordinators can only roll-up patients from their own campus
+        $user = $request->user();
+        $roleName = strtolower((string) ($user?->role?->name ?? ''));
+        if ($roleName !== 'coordinator') {
+            $currentEnrollment = $patient->currentEnrollment;
+            if (!$currentEnrollment || (int) $currentEnrollment->campus_id !== (int) $user->campus_id) {
+                return response()->json([
+                    'message' => 'You can only update patients from your own campus.',
+                ], 403);
+            }
+        }
+
         try {
             $enrollment = $this->enrollmentService->rollUp(
                 $patient,
@@ -76,6 +88,15 @@ class PatientEnrollmentController extends Controller
     {
         if ((int) $enrollment->patient_id !== (int) $patient->id) {
             return response()->json(['message' => 'Enrollment does not belong to this patient.'], 404);
+        }
+
+        // 🚨 P1-6 FIX (extended): Non-coordinators can only correct enrollments for their own campus
+        $user = $request->user();
+        $roleName = strtolower((string) ($user?->role?->name ?? ''));
+        if ($roleName !== 'coordinator' && (int) $enrollment->campus_id !== (int) $user->campus_id) {
+            return response()->json([
+                'message' => 'You can only update enrollments from your own campus.',
+            ], 403);
         }
 
         $validated = $request->validate([

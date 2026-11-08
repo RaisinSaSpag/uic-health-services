@@ -6,12 +6,15 @@ use App\Models\Consultation;
 use App\Models\Referral;
 use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 class ReferralService
 {
-    public function __construct(private readonly AuditLogService $auditLogService)
-    {
+    public function __construct(
+        private readonly AuditLogService $auditLogService,
+        private readonly PrescriptionService $prescriptionService // 🚨 P2-15 FIX: Injected to handle prescription creation and logging
+    ) {
     }
 
     /**
@@ -47,6 +50,11 @@ class ReferralService
 
         if (! $doctor || strtolower((string) $doctor->role?->name) !== 'doctor') {
             throw new RuntimeException('Assigned doctor is invalid.');
+        }
+
+        // 🚨 P2-19 FIX: Prevent referring to a deactivated doctor
+        if (! $doctor->is_active) {
+            throw new RuntimeException('Cannot refer to a deactivated doctor.');
         }
 
         $referral = Referral::create([
@@ -171,80 +179,84 @@ class ReferralService
                 throw new RuntimeException('Only pending or in-progress referrals can be completed.');
             }
 
-            $oldValues = [
-                'status' => $referral->status,
-                'doctor_remarks' => $referral->doctor_remarks,
-                'prescription' => $referral->prescription,
-            ];
-
-            $referral->update([
-                'status' => 'completed',
-                'doctor_remarks' => (string) $payload['doctor_remarks'],
-                'prescription' => (string) ($payload['prescription'] ?? ''),
-                'completed_at' => now(),
-            ]);
-
-            // 🚨 FIX T07: Save Final Diagnosis and Treatment Plan to MedicalRecord
-            $consultation = $referral->consultation;
-            
-            $consultation->medicalRecord()->updateOrCreate(
-                ['consultation_id' => $consultation->id],
-                [
-                    'patient_id' => $consultation->patient_id,
-                    'nurse_id' => $consultation->nurse_id,
-                    'doctor_id' => $actor->id,
-                    'summary' => $payload['doctor_remarks'] ?? '',
-                    'final_diagnosis' => $payload['final_diagnosis'] ?? 'N/A',
-                    'treatment_plan' => $payload['treatment_plan'] ?? 'N/A',
-                    'prescription' => $payload['prescription'] ?? null,
-                    'finalized_at' => now(),
-                ]
-            );
-
-            // 🚨 NEW: Create Prescription records from Doctor's selected medicines
-            $prescriptions = $payload['prescriptions'] ?? [];
-            foreach ($prescriptions as $rx) {
-                if (!empty($rx['medicine_id']) && !empty($rx['quantity']) && (int) $rx['quantity'] > 0) {
-                    \App\Models\Prescription::create([
-                        'consultation_id' => $consultation->id,
-                        'medicine_id' => (int) $rx['medicine_id'],
-                        'quantity' => (int) $rx['quantity'],
-                        'dosage_instructions' => $rx['dosage_instructions'] ?? null,
-                        'status' => 'pending',
-                        'prescribed_by' => $actor->id,
-                    ]);
-                }
-            }
-
-            $consultation->update([
-                'status' => 'nurse_finalization',
-            ]);
-
-            $this->auditLogService->log(
-                actor: $actor,
-                action: 'referral.completed',
-                entityType: 'referral',
-                entityId: $referral->id,
-                oldValues: $oldValues,
-                newValues: [
+            // 🚨 P2-1 FIX: Wrap the entire 6-write process in a single transaction
+            return DB::transaction(function () use ($referral, $payload, $actor) {
+                $oldValues = [
                     'status' => $referral->status,
                     'doctor_remarks' => $referral->doctor_remarks,
                     'prescription' => $referral->prescription,
-                    'completed_at' => (string) $referral->completed_at,
-                ],
-            );
+                ];
 
-            $this->auditLogService->log(
-                actor: $actor,
-                action: 'consultation.nurse_finalization',
-                entityType: 'consultation',
-                entityId: $referral->consultation_id,
-                newValues: [
+                $referral->update([
+                    'status' => 'completed',
+                    'doctor_remarks' => (string) $payload['doctor_remarks'],
+                    'prescription' => (string) ($payload['prescription'] ?? ''),
+                    'completed_at' => now(),
+                ]);
+
+                // 🚨 FIX T07: Save Final Diagnosis and Treatment Plan to MedicalRecord
+                $consultation = $referral->consultation;
+                
+                $consultation->medicalRecord()->updateOrCreate(
+                    ['consultation_id' => $consultation->id],
+                    [
+                        'patient_id' => $consultation->patient_id,
+                        'nurse_id' => $consultation->nurse_id,
+                        'doctor_id' => $actor->id,
+                        'summary' => $payload['doctor_remarks'] ?? '',
+                        'final_diagnosis' => $payload['final_diagnosis'] ?? 'N/A',
+                        'treatment_plan' => $payload['treatment_plan'] ?? 'N/A',
+                        'prescription' => $payload['prescription'] ?? null,
+                        'finalized_at' => now(),
+                    ]
+                );
+
+                // 🚨 P2-15 & P2-16 FIX: Use the service so it throws on bad data and logs the audit trail.
+                $prescriptions = $payload['prescriptions'] ?? [];
+                foreach ($prescriptions as $rx) {
+                    // If it's an empty row from the UI, skip it.
+                    if (empty($rx['medicine_id']) && empty($rx['quantity'])) {
+                        continue;
+                    }
+                    
+                    $this->prescriptionService->create([
+                        'consultation_id' => $consultation->id,
+                        'medicine_id' => $rx['medicine_id'] ?? 0,
+                        'quantity' => $rx['quantity'] ?? 0,
+                        'dosage_instructions' => $rx['dosage_instructions'] ?? null,
+                    ], $actor->id);
+                }
+
+                $consultation->update([
                     'status' => 'nurse_finalization',
-                ],
-            );
+                ]);
 
-            return $referral->refresh()->load(['doctor', 'consultation.patient.user']);
+                $this->auditLogService->log(
+                    actor: $actor,
+                    action: 'referral.completed',
+                    entityType: 'referral',
+                    entityId: $referral->id,
+                    oldValues: $oldValues,
+                    newValues: [
+                        'status' => $referral->status,
+                        'doctor_remarks' => $referral->doctor_remarks,
+                        'prescription' => $referral->prescription,
+                        'completed_at' => (string) $referral->completed_at,
+                    ],
+                );
+
+                $this->auditLogService->log(
+                    actor: $actor,
+                    action: 'consultation.nurse_finalization',
+                    entityType: 'consultation',
+                    entityId: $referral->consultation_id,
+                    newValues: [
+                        'status' => 'nurse_finalization',
+                    ],
+                );
+
+                return $referral->refresh()->load(['doctor', 'consultation.patient.user']);
+            });
         }
 
         throw new RuntimeException('Unsupported referral action.');

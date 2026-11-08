@@ -108,38 +108,52 @@ class BranchRequestService
 
     public function approve(int $requestId, int $actorId): BranchRequest
     {
-        $actor = $this->loadActor($actorId);
-        $request = $this->findPending($requestId);
+        // 🚨 P2-24 FIX: Wrap in transaction and use lockForUpdate
+        return DB::transaction(function () use ($requestId, $actorId) {
+            $actor = $this->loadActor($actorId);
+            
+            $request = BranchRequest::lockForUpdate()->find($requestId);
+            if (!$request || $request->status !== 'pending') {
+                throw new RuntimeException('Branch request is not pending or not found.');
+            }
 
-        $this->assertCanApproveOrReject($actor, $request, $actorId);
+            $this->assertCanApproveOrReject($actor, $request, $actorId);
 
-        $request->update([
-            'status' => 'approved',
-            'approved_by' => $actorId,
-        ]);
+            $request->update([
+                'status' => 'approved',
+                'approved_by' => $actorId,
+            ]);
 
-        $this->auditLogService->record($actorId, 'branch_request.approved', 'branch_request', $request->id);
+            $this->auditLogService->record($actorId, 'branch_request.approved', 'branch_request', $request->id);
 
-        return $request->fresh();
+            return $request->fresh();
+        });
     }
 
     public function reject(int $requestId, int $actorId, string $reason = ''): BranchRequest
     {
-        $actor = $this->loadActor($actorId);
-        $request = $this->findPending($requestId);
+        // 🚨 P2-24 FIX: Wrap in transaction and use lockForUpdate
+        return DB::transaction(function () use ($requestId, $actorId, $reason) {
+            $actor = $this->loadActor($actorId);
+            
+            $request = BranchRequest::lockForUpdate()->find($requestId);
+            if (!$request || $request->status !== 'pending') {
+                throw new RuntimeException('Branch request is not pending or not found.');
+            }
 
-        $this->assertCanApproveOrReject($actor, $request, $actorId);
+            $this->assertCanApproveOrReject($actor, $request, $actorId);
 
-        $request->update([
-            'status' => 'rejected',
-            'approved_by' => $actorId,
-        ]);
+            $request->update([
+                'status' => 'rejected',
+                'approved_by' => $actorId,
+            ]);
 
-        $this->auditLogService->record($actorId, 'branch_request.rejected', 'branch_request', $request->id, [
-            'reason' => $reason,
-        ]);
+            $this->auditLogService->record($actorId, 'branch_request.rejected', 'branch_request', $request->id, [
+                'reason' => $reason,
+            ]);
 
-        return $request->fresh();
+            return $request->fresh();
+        });
     }
 
     public function complete(int $requestId, int $actorId): BranchRequest

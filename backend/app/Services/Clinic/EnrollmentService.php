@@ -30,11 +30,6 @@ class EnrollmentService
     // READ OPERATIONS
     // ============================================================
 
-    /**
-     * Get the patient's current enrollment. Exactly one should exist for
-     * any patient in good data. Returns null if data is inconsistent
-     * (which would be a bug — Phase 3 code should surface this to the nurse).
-     */
     public function currentFor(Patient $patient): ?PatientEnrollment
     {
         return PatientEnrollment::query()
@@ -43,14 +38,9 @@ class EnrollmentService
             ->first();
     }
 
-    /**
-     * Get the enrollment that was active on a given date. Useful for
-     * historical lookups (e.g. "what was this patient's status when they
-     * visited on 2024-03-15?").
-     */
     public function effectiveOn(Patient $patient, Carbon|string $date): ?PatientEnrollment
     {
-        $dateString = $date instanceof Carbon ? $date->toDateString() : $date;
+        $dateString = $date instanceof Carbon ? $date->toDateString() : Carbon::parse($date)->toDateString();
 
         return PatientEnrollment::query()
             ->where('patient_id', $patient->id)
@@ -63,9 +53,6 @@ class EnrollmentService
             ->first();
     }
 
-    /**
-     * Full enrollment history for a patient, newest first.
-     */
     public function historyFor(Patient $patient)
     {
         return PatientEnrollment::query()
@@ -79,15 +66,9 @@ class EnrollmentService
     // WRITE OPERATIONS
     // ============================================================
 
-    /**
-     * Create the initial enrollment for a brand-new patient.
-     * Closes any existing current enrollment defensively (should not exist,
-     * but protects against double-registration race conditions).
-     */
     public function createInitial(Patient $patient, array $data, User $actor): PatientEnrollment
     {
         return DB::transaction(function () use ($patient, $data, $actor) {
-            // Defensive: close any existing current enrollment (shouldn't happen on a new patient)
             $existing = PatientEnrollment::query()
                 ->where('patient_id', $patient->id)
                 ->where('is_current', true)
@@ -127,6 +108,22 @@ class EnrollmentService
                 'change_reason'       => (string) ($data['change_reason'] ?? 'initial_registration'),
             ]);
 
+            // 🚨 P2-14 FIX: Sync the duplicated academic fields to the patients table
+            $patient->update([
+                'campus_id' => $enrollment->campus_id,
+                'student_level' => $enrollment->student_level,
+                'grade_level' => $enrollment->grade_level,
+                'course_program' => $enrollment->course_program,
+                'year_level' => $enrollment->year_level,
+                'section' => $enrollment->section,
+                'student_id_number' => $enrollment->student_id_number,
+                'employee_id' => $enrollment->employee_id,
+                'employee_type' => $enrollment->employee_type,
+                'office_unit_department' => $enrollment->office_unit_department,
+                'position_job_title' => $enrollment->position_job_title,
+                'employment_status' => $enrollment->employment_status,
+            ]);
+
             $this->auditLogService->log(
                 actor: $actor,
                 action: 'enrollment.created',
@@ -143,12 +140,6 @@ class EnrollmentService
         });
     }
 
-    /**
-     * Roll a patient up to a new academic/employment status.
-     * Closes the current enrollment, creates a new one. Never mutates the old.
-     * Idempotent-safe via row lock — two nurses clicking "Moved Up" at the same
-     * time will serialize, second one sees the already-closed current.
-     */
     public function rollUp(Patient $patient, array $data, User $actor): PatientEnrollment
     {
         return DB::transaction(function () use ($patient, $data, $actor) {
@@ -165,13 +156,18 @@ class EnrollmentService
                 );
             }
 
+            // 🚨 P2-12 FIX: Ensure date logic respects date boundaries and prevents future dates.
             $newValidFrom = isset($data['valid_from'])
-                ? Carbon::parse((string) $data['valid_from'])
-                : now();
+                ? Carbon::parse((string) $data['valid_from'])->startOfDay()
+                : now()->startOfDay();
+
+            if ($newValidFrom->isFuture()) {
+                throw new RuntimeException('Roll-up date cannot be in the future.');
+            }
 
             $currentValidFrom = $current->valid_from instanceof Carbon
-                ? $current->valid_from
-                : Carbon::parse((string) $current->valid_from);
+                ? $current->valid_from->startOfDay()
+                : Carbon::parse((string) $current->valid_from)->startOfDay();
 
             if ($newValidFrom->lte($currentValidFrom)) {
                 throw new RuntimeException(
@@ -186,14 +182,13 @@ class EnrollmentService
                 'valid_from' => $currentValidFrom->toDateString(),
             ];
 
-            // Close the old enrollment (day before new one starts)
+            // Close the old enrollment (day before new one starts).
+            // 🚨 P2-22 FIX: Do NOT overwrite the original change_reason. It is preserved for the audit trail.
             $current->update([
                 'is_current' => false,
                 'valid_to' => $newValidFrom->copy()->subDay()->toDateString(),
-                'change_reason' => 'superseded_by_roll_up',
             ]);
 
-            // Create the new one
             $new = PatientEnrollment::create([
                 'patient_id'          => $patient->id,
                 'campus_id'           => (int) $data['campus_id'],
@@ -216,6 +211,22 @@ class EnrollmentService
                 'change_reason'       => (string) ($data['change_reason'] ?? 'level_up'),
             ]);
 
+            // 🚨 P2-14 FIX: Sync the duplicated academic fields back to the patients table
+            $patient->update([
+                'campus_id' => $new->campus_id,
+                'student_level' => $new->student_level,
+                'grade_level' => $new->grade_level,
+                'course_program' => $new->course_program,
+                'year_level' => $new->year_level,
+                'section' => $new->section,
+                'student_id_number' => $new->student_id_number,
+                'employee_id' => $new->employee_id,
+                'employee_type' => $new->employee_type,
+                'office_unit_department' => $new->office_unit_department,
+                'position_job_title' => $new->position_job_title,
+                'employment_status' => $new->employment_status,
+            ]);
+
             $this->auditLogService->log(
                 actor: $actor,
                 action: 'enrollment.rolled_up',
@@ -233,13 +244,6 @@ class EnrollmentService
         });
     }
 
-    /**
-     * Correct the CURRENT enrollment in place (typo fix, not a status change).
-     * Does NOT version. Writes an audit log.
-     *
-     * Example: section was "STEM-A", should be "STEM-B". Same enrollment period,
-     * same category, just a data-entry correction.
-     */
     public function correct(PatientEnrollment $enrollment, array $corrections, User $actor): PatientEnrollment
     {
         if (! $enrollment->is_current) {

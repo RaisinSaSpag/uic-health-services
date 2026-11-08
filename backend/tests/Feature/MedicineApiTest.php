@@ -116,7 +116,7 @@ class MedicineApiTest extends TestCase
     }
 
     // ------------------------------------------------------------
-    // DELETE (Nurse + Coordinator CAN delete)
+    // DELETE (Coordinator only — P1-12 option A)
     // ------------------------------------------------------------
 
     public function test_coordinator_can_delete_a_medicine_without_stock(): void
@@ -128,13 +128,13 @@ class MedicineApiTest extends TestCase
         $this->assertDatabaseMissing('medicines', ['id' => $medicine->id]);
     }
 
-    public function test_nurse_can_delete_a_medicine(): void
+    public function test_nurse_cannot_delete_a_medicine(): void
     {
         $nurse = $this->createUserWithRole('nurse');
         $medicine = Medicine::factory()->create();
         $response = $this->asUser($nurse)->deleteJson("/api/v1/medicines/{$medicine->id}");
-        $response->assertOk();
-        $this->assertDatabaseMissing('medicines', ['id' => $medicine->id]);
+        $response->assertForbidden();
+        $this->assertDatabaseHas('medicines', ['id' => $medicine->id]);
     }
 
     // ------------------------------------------------------------

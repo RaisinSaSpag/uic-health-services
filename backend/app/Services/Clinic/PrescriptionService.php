@@ -38,9 +38,14 @@ class PrescriptionService
             throw new RuntimeException('Quantity must be greater than zero.');
         }
 
-        $consultationExists = \App\Models\Consultation::where('id', $validated['consultation_id'])->exists();
-        if (!$consultationExists) {
+        $consultation = \App\Models\Consultation::find($validated['consultation_id']);
+        if (!$consultation) {
             throw new RuntimeException('Consultation not found.');
+        }
+
+        // 🚨 P2-25 FIX: Cannot add prescriptions to a completed/cancelled consultation.
+        if (in_array($consultation->status, ['completed', 'cancelled'])) {
+            throw new RuntimeException('Cannot create a prescription for a completed or cancelled consultation.');
         }
 
         $medicineExists = \App\Models\Medicine::where('id', $validated['medicine_id'])->exists();
@@ -48,22 +53,25 @@ class PrescriptionService
             throw new RuntimeException('Medicine not found.');
         }
 
-        $prescription = Prescription::create([
-            'consultation_id' => $validated['consultation_id'],
-            'medicine_id' => $validated['medicine_id'],
-            'quantity' => $validated['quantity'],
-            'dosage_instructions' => $validated['dosage_instructions'] ?: null,
-            'status' => 'pending',
-            'prescribed_by' => $actorId,
-        ]);
+        // 🚨 P2-23 FIX: Wrap in transaction so the audit log doesn't fail silently
+        return DB::transaction(function () use ($validated, $actorId) {
+            $prescription = Prescription::create([
+                'consultation_id' => $validated['consultation_id'],
+                'medicine_id' => $validated['medicine_id'],
+                'quantity' => $validated['quantity'],
+                'dosage_instructions' => $validated['dosage_instructions'] ?: null,
+                'status' => 'pending',
+                'prescribed_by' => $actorId,
+            ]);
 
-        $this->auditLogService->record($actorId, 'prescription.created', 'prescription', $prescription->id, [
-            'consultation_id' => $validated['consultation_id'],
-            'medicine_id' => $validated['medicine_id'],
-            'quantity' => $validated['quantity'],
-        ]);
+            $this->auditLogService->record($actorId, 'prescription.created', 'prescription', $prescription->id, [
+                'consultation_id' => $validated['consultation_id'],
+                'medicine_id' => $validated['medicine_id'],
+                'quantity' => $validated['quantity'],
+            ]);
 
-        return $prescription;
+            return $prescription;
+        });
     }
 
     /**
@@ -78,12 +86,17 @@ class PrescriptionService
         }
 
         return DB::transaction(function () use ($prescriptionId, $stockInId, $nurseId) {
-            $prescription = Prescription::lockForUpdate()->find($prescriptionId);
+            $prescription = Prescription::with('consultation')->lockForUpdate()->find($prescriptionId);
             if (!$prescription) {
                 throw new RuntimeException('Prescription not found.');
             }
             if ($prescription->status !== 'pending') {
                 throw new RuntimeException('Only pending prescriptions can be dispensed.');
+            }
+
+            // 🚨 P2-3 FIX: Cannot dispense if the consultation is already closed.
+            if (in_array($prescription->consultation->status, ['completed', 'cancelled'])) {
+                throw new RuntimeException('Cannot dispense a prescription for a completed or cancelled consultation.');
             }
 
             $nurse = User::with('role')->find($nurseId);
@@ -132,12 +145,17 @@ class PrescriptionService
     public function dispenseFifo(int $prescriptionId, int $nurseId): Prescription
     {
         return DB::transaction(function () use ($prescriptionId, $nurseId) {
-            $prescription = Prescription::lockForUpdate()->find($prescriptionId);
+            $prescription = Prescription::with('consultation')->lockForUpdate()->find($prescriptionId);
             if (!$prescription) {
                 throw new RuntimeException('Prescription not found.');
             }
             if ($prescription->status !== 'pending') {
                 throw new RuntimeException('Only pending prescriptions can be dispensed.');
+            }
+
+            // 🚨 P2-3 FIX: Cannot dispense if the consultation is already closed.
+            if (in_array($prescription->consultation->status, ['completed', 'cancelled'])) {
+                throw new RuntimeException('Cannot dispense a prescription for a completed or cancelled consultation.');
             }
 
             $nurse = User::with('role')->find($nurseId);
@@ -150,7 +168,7 @@ class PrescriptionService
                 throw new RuntimeException('Acting user has no assigned campus.');
             }
 
-            // Find oldest non-expired batch with available stock at this campus
+            // 🚨 P2-2 FIX: Ensure available quantity includes archived stock
             $today = Carbon::today()->toDateString();
             $batch = MedicineStockIn::query()
                 ->where('medicine_id', (int) $prescription->medicine_id)
@@ -159,30 +177,32 @@ class PrescriptionService
                     $q->whereNull('expiration_date')
                       ->orWhere('expiration_date', '>=', $today);
                 })
-                ->whereRaw('quantity > (SELECT COALESCE(SUM(quantity_dispensed), 0) FROM medicine_stock_out WHERE medicine_stock_out.stock_in_id = medicine_stock_in.id)')
+                ->whereRaw('
+                    (quantity - 
+                     (SELECT COALESCE(SUM(quantity_dispensed), 0) FROM medicine_stock_out WHERE medicine_stock_out.stock_in_id = medicine_stock_in.id) -
+                     (SELECT COALESCE(SUM(quantity), 0) FROM medicine_archived WHERE medicine_archived.stock_in_id = medicine_stock_in.id)
+                    ) >= ?
+                ', [(int) $prescription->quantity])
                 ->orderBy('expiration_date', 'asc')
                 ->orderBy('date_received', 'asc')
                 ->lockForUpdate()
                 ->first();
 
             if (!$batch) {
-                throw new RuntimeException('No available stock of this medicine at your campus. Mark it as unavailable instead.');
+                throw new RuntimeException('No single available stock batch has enough quantity of this medicine at your campus. Mark it as unavailable instead.');
             }
 
-            // Deduct stock via existing service
             $this->inventoryService->dispense([
                 'stock_in_id' => $batch->id,
                 'quantity_dispensed' => $prescription->quantity,
             ], $nurseId);
 
-            // Update prescription record
             $prescription->update([
                 'dispensed_by' => $nurseId,
                 'dispensed_at' => now(),
                 'status' => 'dispensed',
             ]);
 
-            // Audit trail
             $this->auditLogService->record($nurseId, 'prescription.dispensed_fifo', 'prescription', $prescription->id, [
                 'stock_in_id' => $batch->id,
                 'quantity' => $prescription->quantity,
@@ -225,21 +245,26 @@ class PrescriptionService
      */
     public function cancel(int $prescriptionId, int $actorId): Prescription
     {
-        $prescription = Prescription::find($prescriptionId);
-        if (!$prescription) {
-            throw new RuntimeException('Prescription not found.');
-        }
-        if ($prescription->status !== 'pending') {
-            throw new RuntimeException('Only pending prescriptions can be cancelled.');
-        }
+        // 🚨 P2-4 FIX: Wrap in a transaction and use lockForUpdate to prevent race conditions with dispensing.
+        return DB::transaction(function () use ($prescriptionId, $actorId) {
+            $prescription = Prescription::lockForUpdate()->find($prescriptionId);
+            if (!$prescription) {
+                throw new RuntimeException('Prescription not found.');
+            }
+            
+            // 🚨 P2-5 FIX: Allow cancelling if it's pending OR unavailable (e.g. stock arrived but doctor wants to cancel).
+            if (!in_array($prescription->status, ['pending', 'unavailable'])) {
+                throw new RuntimeException('Only pending or unavailable prescriptions can be cancelled.');
+            }
 
-        $prescription->update(['status' => 'cancelled']);
+            $prescription->update(['status' => 'cancelled']);
 
-        $this->auditLogService->record($actorId, 'prescription.cancelled', 'prescription', $prescription->id, [
-            'status' => 'cancelled',
-        ]);
+            $this->auditLogService->record($actorId, 'prescription.cancelled', 'prescription', $prescription->id, [
+                'status' => 'cancelled',
+            ]);
 
-        return $prescription->fresh();
+            return $prescription->fresh();
+        });
     }
 
     /**
