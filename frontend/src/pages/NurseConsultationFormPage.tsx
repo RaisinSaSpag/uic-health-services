@@ -38,7 +38,12 @@ const toNullableDecimal = (v: string) => {
   const p = Number.parseFloat(v);
   return Number.isNaN(p) ? null : p;
 };
-const getToday = () => new Date().toISOString().split('T')[0];
+
+// 🚨 P4-10 FIX: Use local time, not UTC (PH is UTC+8, so toISOString was wrong before 8AM)
+const getToday = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
 const getNowTime = () => {
   const d = new Date();
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -104,6 +109,15 @@ export function NurseConsultationFormPage() {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
+  // 🚨 P4-12 FIX: When switching to "refer to doctor", clear the diagnosis
+  const handleReferralToggle = (referred: boolean) => {
+    setForm((prev) => ({
+      ...prev,
+      referredToDoctor: referred,
+      diagnosis: referred ? '' : prev.diagnosis,
+    }));
+  };
+
   const submitForm = async (e: FormEvent) => {
     e.preventDefault();
     if (!patient) return;
@@ -138,12 +152,25 @@ export function NurseConsultationFormPage() {
       const consultRes = await api.post('/consultations', payload);
       const consultationId = consultRes.data.id;
 
+      // 🚨 P4-11 FIX: If the referral fails, cancel the consultation so we don't leave an orphan
       if (form.referredToDoctor && form.referralDoctorId) {
-        await api.post('/referrals', {
-          consultation_id: consultationId,
-          doctor_id: Number(form.referralDoctorId),
-          referral_reason: form.remarks || form.referralNotes || 'Nurse requested doctor assessment.',
-        });
+        try {
+          await api.post('/referrals', {
+            consultation_id: consultationId,
+            doctor_id: Number(form.referralDoctorId),
+            referral_reason: form.remarks || form.referralNotes || 'Nurse requested doctor assessment.',
+          });
+        } catch (referralErr) {
+          // Rollback: the consultation was created but the referral failed.
+          try {
+            await api.patch(`/consultations/${consultationId}`, { action: 'cancel' });
+          } catch {
+            // ignore — best effort rollback
+          }
+          throw new Error(
+            'Consultation was recorded but the referral could not be created. Please try again or contact IT.',
+          );
+        }
       }
 
       void notifySuccess(
@@ -172,8 +199,9 @@ export function NurseConsultationFormPage() {
     return (
       <div className="page" style={{ maxWidth: 880, margin: '3rem auto', textAlign: 'center' }}>
         <p>Patient not found.</p>
-        <Link to="/nurse/patients" className="button ghost" style={{ marginTop: '1rem' }}>
-          Back to patients
+        {/* 🚨 P4-16 FIX: Link now points to a valid route */}
+        <Link to="/nurse/records/student" className="button ghost" style={{ marginTop: '1rem' }}>
+          Back to records
         </Link>
       </div>
     );
@@ -339,7 +367,6 @@ export function NurseConsultationFormPage() {
               />
             </label>
             
-            {/* 🚨 FIXED: Diagnosis is now a dropdown */}
             <label className="field">
               <span>
                 Diagnosis (Nurse)
@@ -407,7 +434,7 @@ export function NurseConsultationFormPage() {
           >
             <button
               type="button"
-              onClick={() => handleChange('referredToDoctor', false)}
+              onClick={() => handleReferralToggle(false)}
               style={{
                 textAlign: 'left',
                 padding: '1rem 1.1rem',
@@ -428,7 +455,7 @@ export function NurseConsultationFormPage() {
 
             <button
               type="button"
-              onClick={() => handleChange('referredToDoctor', true)}
+              onClick={() => handleReferralToggle(true)}
               style={{
                 textAlign: 'left',
                 padding: '1rem 1.1rem',

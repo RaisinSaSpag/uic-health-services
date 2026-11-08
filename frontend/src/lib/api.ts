@@ -28,8 +28,14 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       // Only redirect if not already on login page
       if (!window.location.pathname.startsWith('/login')) {
+        // 🚨 P4-18 FIX: Clear the correct sessionStorage keys
+        sessionStorage.removeItem('hsms.access_token');
+        sessionStorage.removeItem('hsms.auth_user');
+        
+        // Legacy cleanup just in case
         localStorage.removeItem('hsms_token');
         localStorage.removeItem('hsms_user');
+        
         window.location.href = '/login';
       }
     }

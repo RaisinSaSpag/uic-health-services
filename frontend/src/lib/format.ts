@@ -2,20 +2,22 @@ import type { RoleName, RoleRecord, UserRecord } from '../types/hsms';
 
 export function normalizeRoleName(role: unknown): RoleName {
   if (!role) {
-    return '';
+    return 'student'; // 🚨 P4-13 FIX: Default to a valid role instead of ''
   }
 
   if (typeof role === 'string') {
-    return role.toLowerCase();
+    const lower = role.toLowerCase() as RoleName;
+    return ['student', 'employee', 'nurse', 'doctor', 'coordinator'].includes(lower) ? lower : 'student';
   }
 
   const roleRecord = role as RoleRecord;
 
   if (typeof roleRecord.name === 'string') {
-    return roleRecord.name.toLowerCase();
+    const lower = roleRecord.name.toLowerCase() as RoleName;
+    return ['student', 'employee', 'nurse', 'doctor', 'coordinator'].includes(lower) ? lower : 'student';
   }
 
-  return '';
+  return 'student'; // 🚨 P4-13 FIX: Default to a valid role instead of ''
 }
 
 export function userDisplayName(user: Partial<UserRecord> | null | undefined): string {

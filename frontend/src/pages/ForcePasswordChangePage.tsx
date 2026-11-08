@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext';
 
 export function ForcePasswordChangePage() {
   const navigate = useNavigate();
-  const { user, refreshUser } = useAuth(); // Assuming your AuthContext has a refreshUser method
+  const { user, refreshProfile } = useAuth(); // 🚨 P4-4 FIX: was refreshUser
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -34,8 +34,8 @@ export function ForcePasswordChangePage() {
       
       // Instead of logging out, we refresh the user state.
       // This updates `must_change_password` to false and lets the AppShell render the portal.
-      if (refreshUser) {
-        await refreshUser();
+      if (refreshProfile) {
+        await refreshProfile();
       }
       
       // Navigate to the dashboard/portal

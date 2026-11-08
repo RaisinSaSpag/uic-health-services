@@ -15,6 +15,7 @@ export interface UserRecord {
   campus_id?: number | null;
   department_id?: number | null;
   must_change_password?: boolean;
+  is_active?: boolean; // 🚨 P4-13 FIX
 }
 
 export interface AuthUser {
@@ -41,6 +42,9 @@ export interface LookupRecord {
   name: string;
   code?: string;
 }
+
+// 🚨 P4-13 FIX: Add Campus alias (used by CoordinatorUsersPage & NurseInventoryStocksPage)
+export type Campus = LookupRecord;
 
 export interface PatientEnrollment {
   id: number;
@@ -184,7 +188,7 @@ export interface Referral {
 export interface Consultation {
   id: number;
   patient_id: number;
-  patient_enrollment_id?: number | null; // <-- ADDED
+  patient_enrollment_id?: number | null;
   nurse_id?: number | null;
   consultation_type: string;
   status: string;
@@ -203,6 +207,7 @@ export interface Consultation {
   consulted_at?: string | null;
   started_at?: string | null;
   completed_at?: string | null;
+  created_at?: string | null; // 🚨 P4-13 FIX
 
   // Telemed/Referral Fields
   is_telemed?: boolean;
@@ -211,9 +216,13 @@ export interface Consultation {
   referral_notes?: string | null;
 
   patient?: Patient;
-  patientEnrollment?: PatientEnrollment | null; // <-- ADDED
+  patientEnrollment?: PatientEnrollment | null;
   nurse?: UserRecord | null;
   referral?: Referral | null;
+  
+  // 🚨 P4-3 FIX: Laravel serializes the relation as medical_record (snake_case)
+  medical_record?: MedicalRecord | null;
+  // Legacy camelCase alias for backward compat with old code
   medicalRecord?: MedicalRecord | null;
 }
 

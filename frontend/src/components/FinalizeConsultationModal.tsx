@@ -33,7 +33,10 @@ export function FinalizeConsultationModal({ isOpen, onClose, consultation, onSuc
     const loadPrescriptions = async () => {
       setLoadingRx(true);
       try {
-        const res = await api.get<PrescriptionRecord[]>(`/consultations/${consultation.id}/prescriptions`);
+        // 🚨 P4-2 FIX: Backend endpoint is /prescriptions?consultation_id=X
+        const res = await api.get<PrescriptionRecord[]>('/prescriptions', {
+          params: { consultation_id: consultation.id },
+        });
         setPrescriptions(res.data || []);
       } catch {
         setPrescriptions([]);
@@ -87,13 +90,16 @@ export function FinalizeConsultationModal({ isOpen, onClose, consultation, onSuc
 
     setLoading(true);
     try {
+      // 🚨 P4-3 FIX: Laravel serializes to medical_record (snake_case)
+      const medicalRecord = (consultation as any).medical_record;
+      
       await api.patch(`/consultations/${consultation.id}`, {
         action: 'complete',
-        summary: consultation.medicalRecord?.summary || 'Completed via referral',
-        final_diagnosis: consultation.medicalRecord?.final_diagnosis || 'See doctor notes',
-        treatment_plan: consultation.medicalRecord?.treatment_plan || 'See doctor notes',
-        prescription: consultation.medicalRecord?.prescription || null,
-        follow_up_date: consultation.medicalRecord?.follow_up_date || null,
+        summary: medicalRecord?.summary || 'Completed via referral',
+        final_diagnosis: medicalRecord?.final_diagnosis || 'See doctor notes',
+        treatment_plan: medicalRecord?.treatment_plan || 'See doctor notes',
+        prescription: medicalRecord?.prescription || null,
+        follow_up_date: medicalRecord?.follow_up_date || null,
         nurse_finalization_notes: nurseNotes.trim() || null,
       });
 
@@ -106,6 +112,9 @@ export function FinalizeConsultationModal({ isOpen, onClose, consultation, onSuc
       setLoading(false);
     }
   };
+
+  // 🚨 P4-3 FIX: Use snake_case for reading from Laravel
+  const medicalRecord = (consultation as any).medical_record;
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -123,15 +132,15 @@ export function FinalizeConsultationModal({ isOpen, onClose, consultation, onSuc
           <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
             <div style={{ marginBottom: '0.75rem' }}>
               <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Final Diagnosis</span>
-              <p style={{ margin: '0.25rem 0 0 0', fontWeight: 500 }}>{consultation.medicalRecord?.final_diagnosis || 'N/A'}</p>
+              <p style={{ margin: '0.25rem 0 0 0', fontWeight: 500 }}>{medicalRecord?.final_diagnosis || 'N/A'}</p>
             </div>
             <div style={{ marginBottom: '0.75rem' }}>
               <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Treatment Plan</span>
-              <p style={{ margin: '0.25rem 0 0 0' }}>{consultation.medicalRecord?.treatment_plan || 'N/A'}</p>
+              <p style={{ margin: '0.25rem 0 0 0' }}>{medicalRecord?.treatment_plan || 'N/A'}</p>
             </div>
             <div>
               <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Free-Text Prescription</span>
-              <p style={{ margin: '0.25rem 0 0 0', whiteSpace: 'pre-wrap' }}>{consultation.medicalRecord?.prescription || 'None'}</p>
+              <p style={{ margin: '0.25rem 0 0 0', whiteSpace: 'pre-wrap' }}>{medicalRecord?.prescription || 'None'}</p>
             </div>
           </div>
 

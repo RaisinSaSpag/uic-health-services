@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Building2, Download, FileText } from 'lucide-react';
+// 🚨 P4-13 FIX: Removed unused Download import
+import { ArrowLeft, Building2, FileText } from 'lucide-react';
 import { 
   ResponsiveContainer, 
   BarChart, 
@@ -36,7 +37,6 @@ export function CoordinatorCampusReportPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      // We will build this backend endpoint next
       const res = await api.get(`/reports/campus-detail/${campusCode}?month=${month}&year=${year}`);
       setData(res.data);
     } catch (err) {

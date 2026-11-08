@@ -91,7 +91,6 @@ export function NurseInventoryStocksPage() {
   const navigate = useNavigate();
   const { basePath, isDoctor } = useInventoryBasePath();
   
-  // 🚨 NEW: Read URL params for the KPI card links
   const [searchParams] = useSearchParams();
 
   const isCoordinator = user?.role === 'coordinator';
@@ -105,7 +104,6 @@ export function NurseInventoryStocksPage() {
     [basePath],
   );
 
-  // Campus State
   const [campuses, setCampuses] = useState<Campus[]>([]);
   const [selectedCampusId, setSelectedCampusId] = useState<number | null>(null);
 
@@ -113,20 +111,17 @@ export function NurseInventoryStocksPage() {
   const [campusStockMap, setCampusStockMap] = useState<Record<number, number>>({});
   const [search, setSearch] = useState('');
   
-  // 🚨 NEW: Initialize filter from URL param
   const [stockFilter, setStockFilter] = useState<'all' | 'out' | 'low' | 'healthy' | 'expiring'>(
     (searchParams.get('filter') as any) || 'all'
   );
   const [loading, setLoading] = useState(true);
 
-  // Modal states
   const [isModalOpen, setModalOpen] = useState(false);
   const [editingMedicine, setEditingMedicine] = useState<Medicine | null>(null);
   const [formName, setFormName] = useState('');
   const [formCategory, setFormCategory] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  // Stock-In modal state
   const [isStockInOpen, setStockInOpen] = useState(false);
   const [stockInMedicine, setStockInMedicine] = useState<Medicine | null>(null);
   const [stockInQuantity, setStockInQuantity] = useState('');
@@ -134,19 +129,16 @@ export function NurseInventoryStocksPage() {
   const [stockInExpirationDate, setStockInExpirationDate] = useState('');
   const [stockInSubmitting, setStockInSubmitting] = useState(false);
 
-  // Dispense modal state
   const [isDispenseOpen, setDispenseOpen] = useState(false);
   const [dispenseMedicine, setDispenseMedicine] = useState<Medicine | null>(null);
-  const [dispenseBatches, setDispenseBatches] = useState<DispenseBatch[]>([]);
-  const [, setDispenseLoadingBatches] = useState(false);
+  // 🚨 P4-14 FIX: Removed dead state variables, replaced with static empty arrays
+  const dispenseBatches: DispenseBatch[] = [];
 
-  // Archive modal state
   const [isArchiveOpen, setArchiveOpen] = useState(false);
   const [archiveMedicine, setArchiveMedicine] = useState<Medicine | null>(null);
-  const [archiveBatches, setArchiveBatches] = useState<ArchiveBatch[]>([]);
-  const [, setArchiveLoadingBatches] = useState(false);
+  // 🚨 P4-14 FIX: Removed dead state variables, replaced with static empty arrays
+  const archiveBatches: ArchiveBatch[] = [];
 
-  // Archived list modal state
   const [isArchivedOpen, setArchivedOpen] = useState(false);
 
   const userName = useMemo(() => userDisplayName(user), [user]);
@@ -203,26 +195,20 @@ export function NurseInventoryStocksPage() {
     void loadData();
   }, [loadData]);
 
-  // 🚨 NEW FILTER LOGIC
   const filteredMedicines = useMemo(() => {
     const normalized = search.trim().toLowerCase();
     
     return medicines.filter((medicine) => {
       const stock = campusStockMap[medicine.id] || 0;
       
-      // Text Search Filter
       const matchesSearch = normalized === '' || 
         medicine.name.toLowerCase().includes(normalized) ||
         medicine.category.toLowerCase().includes(normalized);
 
-      // Stock Level Filter
       let matchesStock = true;
       if (stockFilter === 'out') matchesStock = stock === 0;
       if (stockFilter === 'low') matchesStock = stock > 0 && stock <= 20;
       if (stockFilter === 'healthy') matchesStock = stock > 20;
-      
-      // For Expiring, we just show items that have stock for now
-      // (To do this properly, the availableStocks endpoint would need to return expiration dates)
       if (stockFilter === 'expiring') matchesStock = stock > 0; 
 
       return matchesSearch && matchesStock;
@@ -393,7 +379,6 @@ export function NurseInventoryStocksPage() {
 
         <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
           
-          {/* Search Bar */}
           <div style={{ position: 'relative', flex: 1, minWidth: '250px' }}>
             <Search style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} size={18} />
             <input
@@ -406,7 +391,6 @@ export function NurseInventoryStocksPage() {
             />
           </div>
 
-          {/* Stock Filter */}
           <div style={{ display: 'flex', alignItems: 'center', backgroundColor: 'white', borderRadius: '8px', border: '1px solid #e2e8f0', padding: '0 0.5rem' }}>
             <Filter size={16} color="#64748b" style={{ marginLeft: '0.5rem' }} />
             <select 
@@ -504,7 +488,6 @@ export function NurseInventoryStocksPage() {
         </div>
       </main>
 
-      {/* Modals */}
       {isModalOpen && (
         <div className="modal-backdrop" onClick={closeModal}>
           <div className="modal-panel" onClick={(e) => e.stopPropagation()}>

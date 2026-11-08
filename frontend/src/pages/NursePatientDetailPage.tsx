@@ -23,7 +23,7 @@ import {
 import { StatusBadge } from '../components/StatusBadge';
 import { PatientProfileTab } from '../components/PatientProfileTab';
 import { EnrollmentRollUpModal } from '../components/EnrollmentRollUpModal';
-import { FinalizeConsultationModal } from '../components/FinalizeConsultationModal'; // 🚨 NEW
+import { FinalizeConsultationModal } from '../components/FinalizeConsultationModal';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../lib/api';
 import { notifyError } from '../lib/alerts';
@@ -143,12 +143,12 @@ export function NursePatientDetailPage() {
   const [selectedConsultation, setSelectedConsultation] = useState<Consultation | null>(null);
   const [loadingConsultation, setLoadingConsultation] = useState(false);
   const [showConsultationMoreDetails, setShowConsultationMoreDetails] = useState(false);
-  
-  // 🚨 State for the Roll-Up modal
+
+  // State for the Roll-Up modal
   const [isRollUpOpen, setRollUpOpen] = useState(false);
-  // 🚨 NEW: State for the Finalize modal
+  // State for the Finalize modal
   const [finalizeConsultation, setFinalizeConsultation] = useState<Consultation | null>(null);
-  
+
   const consultationRequestTokenRef = useRef(0);
 
   const nurseName = useMemo(() => userDisplayName(user), [user]);
@@ -273,7 +273,8 @@ export function NursePatientDetailPage() {
     if (!selectedConsultation) return [];
     return [
       { label: 'Chief Complaint', value: selectedConsultation.chief_complaint || 'N/A' },
-      { label: 'Diagnosis', value: selectedConsultation.diagnosis || selectedConsultation.symptoms || selectedConsultation.medicalRecord?.final_diagnosis || 'N/A' },
+      // 🚨 P4-3 FIX: snake_case
+      { label: 'Diagnosis', value: selectedConsultation.diagnosis || selectedConsultation.symptoms || (selectedConsultation as any).medical_record?.final_diagnosis || 'N/A' },
       { label: 'Blood Pressure', value: selectedConsultation.blood_pressure || 'N/A' },
       { label: 'Pulse (BPM)', value: normalizeNumericText(selectedConsultation.pulse_bpm) },
       { label: 'Temperature (C)', value: normalizeNumericText(selectedConsultation.temperature_c, 'C') },
@@ -289,9 +290,10 @@ export function NursePatientDetailPage() {
       { label: 'Triage Notes', value: selectedConsultation.triage_notes || 'N/A' },
       { label: 'Referral Reason', value: selectedConsultation.referral?.referral_reason || 'N/A' },
       { label: 'Doctor Remarks', value: selectedConsultation.referral?.doctor_remarks || 'N/A' },
-      { label: 'Final Diagnosis', value: selectedConsultation.medicalRecord?.final_diagnosis || 'N/A' },
-      { label: 'Treatment Plan', value: selectedConsultation.medicalRecord?.treatment_plan || 'N/A' },
-      { label: 'Prescription', value: selectedConsultation.medicalRecord?.prescription || selectedConsultation.referral?.prescription || 'N/A' },
+      // 🚨 P4-3 FIX: snake_case
+      { label: 'Final Diagnosis', value: (selectedConsultation as any).medical_record?.final_diagnosis || 'N/A' },
+      { label: 'Treatment Plan', value: (selectedConsultation as any).medical_record?.treatment_plan || 'N/A' },
+      { label: 'Prescription', value: (selectedConsultation as any).medical_record?.prescription || selectedConsultation.referral?.prescription || 'N/A' },
     ];
   }, [selectedConsultation]);
 
@@ -494,7 +496,6 @@ export function NursePatientDetailPage() {
                 </section>
               )}
 
-              {/* 🚨 NEW: Finalize Modal */}
               <FinalizeConsultationModal
                 isOpen={finalizeConsultation !== null}
                 onClose={() => setFinalizeConsultation(null)}
@@ -528,7 +529,6 @@ export function NursePatientDetailPage() {
                         <button className="button ghost nurse-consultation-spotlight-close" onClick={closeConsultationModal} type="button">Close</button>
                       </header>
 
-                      {/* 🚨 NEW: Finalize Banner for Nurse Finalization status */}
                       {selectedConsultation?.status === 'nurse_finalization' && (
                         <div style={{ padding: '1rem', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', margin: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <div>

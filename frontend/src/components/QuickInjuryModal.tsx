@@ -14,7 +14,7 @@ interface QuickInjuryModalProps {
 export function QuickInjuryModal({ isOpen, onClose, onSuccess }: QuickInjuryModalProps) {
   const [injurySearchTerm, setInjurySearchTerm] = useState('');
   const [injurySearchResults, setInjurySearchResults] = useState<any[]>([]);
-  const [injurySearching, setInjurySearching] = useState(false);
+  // 🚨 P4-13 FIX: Removed unused injurySearching state
   const [selectedPatient, setSelectedPatient] = useState<any | null>(null);
   const [injurySubmitting, setInjurySubmitting] = useState(false);
   const [injuryForm, setInjuryForm] = useState({
@@ -42,14 +42,11 @@ export function QuickInjuryModal({ isOpen, onClose, onSuccess }: QuickInjuryModa
       return;
     }
     const timer = setTimeout(async () => {
-      setInjurySearching(true);
       try {
         const res = await api.get(`/patients/search?q=${injurySearchTerm}`);
         setInjurySearchResults(res.data);
       } catch (err) {
         // ignore
-      } finally {
-        setInjurySearching(false);
       }
     }, 500);
     return () => clearTimeout(timer);
@@ -112,7 +109,8 @@ export function QuickInjuryModal({ isOpen, onClose, onSuccess }: QuickInjuryModa
                 <div 
                   key={p.id} 
                   onClick={() => { setSelectedPatient(p); setInjurySearchResults([]); }}
-                  style={{ padding: '0.75rem', borderBottom: '1px solid #f1f5f9', cursor: 'pointer', hover: { background: '#f8fafc' } }}
+                  // 🚨 P4-13 FIX: Removed invalid hover property
+                  style={{ padding: '0.75rem', borderBottom: '1px solid #f1f5f9', cursor: 'pointer' }}
                 >
                   <strong>{p.first_name} {p.last_name}</strong> <span className="muted">({p.patient_number})</span>
                 </div>

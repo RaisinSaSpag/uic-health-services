@@ -47,6 +47,22 @@ const referralStatusOptions = [
   { value: 'in_progress', label: 'In Progress' },
 ];
 
+const diagnosisOptions = [
+  { value: 'Migraine', label: 'Migraine' },
+  { value: 'Tension Headache', label: 'Tension Headache' },
+  { value: 'Viral Infection', label: 'Viral Infection (Common Cold)' },
+  { value: 'Upper Respiratory Tract Infection', label: 'URTI (Flu)' },
+  { value: 'Gastroenteritis', label: 'Gastroenteritis (Stomach ache)' },
+  { value: 'Food Poisoning', label: 'Food Poisoning' },
+  { value: 'Asthma', label: 'Asthma' },
+  { value: 'Hypertension', label: 'Hypertension (High Blood Pressure)' },
+  { value: 'Allergic Reaction', label: 'Allergic Reaction' },
+  { value: 'Dysmenorrhea', label: 'Dysmenorrhea (Menstrual Cramps)' },
+  { value: 'Minor Injury', label: 'Minor Injury / Wound' },
+  { value: 'Dental Pain', label: 'Dental Pain' },
+  { value: 'Other', label: 'Other (Specify in Treatment Plan)' },
+];
+
 function parseReferralId(value: string | undefined): number | null {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed <= 0) return null;
@@ -124,6 +140,7 @@ export function DoctorReferralsPage() {
       setTreatmentPlan(response.data.treatment_plan ?? '');
       setDoctorRemarks(response.data.doctor_remarks ?? '');
       setPrescriptionText(response.data.prescription ?? '');
+      setPrescriptionRows([]);
     } catch (err) {
       void notifyError(getErrorMessage(err, 'Unable to load selected referral.'), 'Load Failed');
       navigate('/doctor/referrals');
@@ -132,13 +149,12 @@ export function DoctorReferralsPage() {
     }
   }, [navigate, routeReferralId]);
 
-  // Load medicines once
   useEffect(() => {
     let isMounted = true;
     const fetchMedicines = async () => {
       try {
         const medRes = await api.get<PaginatedResponse<Medicine>>('/medicines', { params: { per_page: 100 } });
-        if (isMounted) setMedicines(medRes.data.data || []);
+        if (isMounted) setMedicines((medRes.data as any) || []);
       } catch { /* non-fatal */ }
     };
     void fetchMedicines();
@@ -178,9 +194,11 @@ export function DoctorReferralsPage() {
   };
 
   const addPrescriptionRow = () => {
+    // 🚨 P4-19 FIX: crypto.randomUUID needs a secure context. Fallback for HTTP.
+    const id = window.crypto?.randomUUID ? window.crypto.randomUUID() : Math.random().toString(36).substring(2, 15);
     setPrescriptionRows((prev) => [
       ...prev,
-      { id: crypto.randomUUID(), medicine_id: '', quantity: 1, dosage_instructions: '' },
+      { id, medicine_id: '', quantity: 1, dosage_instructions: '' },
     ]);
   };
 
@@ -197,15 +215,15 @@ export function DoctorReferralsPage() {
 
     if (action === 'complete') {
       if (finalDiagnosis.trim() === '') {
-        void notifyError('Final Diagnosis is required to complete this referral.', 'Missing Details');
+        await notifyError('Final Diagnosis is required to complete this referral.', 'Missing Details');
         return;
       }
       if (treatmentPlan.trim() === '') {
-        void notifyError('Treatment Plan is required to complete this referral.', 'Missing Details');
+        await notifyError('Treatment Plan is required to complete this referral.', 'Missing Details');
         return;
       }
       if (doctorRemarks.trim() === '') {
-        void notifyError('Doctor remarks are required to complete this referral.', 'Missing Details');
+        await notifyError('Doctor remarks are required to complete this referral.', 'Missing Details');
         return;
       }
       const confirmed = await confirmAction({
@@ -216,6 +234,17 @@ export function DoctorReferralsPage() {
       });
       if (!confirmed) return;
 
+      const invalidRows = prescriptionRows.filter((row) => 
+        (row.medicine_id && row.quantity <= 0) || (!row.medicine_id && row.quantity > 0)
+      );
+      
+      if (invalidRows.length > 0) {
+        const proceed = window.confirm(
+          `${invalidRows.length} prescription row(s) have a missing medicine or invalid quantity and will be dropped. Continue?`
+        );
+        if (!proceed) return;
+      }
+
       setSaving(true);
       try {
         await api.patch(`/referrals/${detailReferral.id}`, {
@@ -223,12 +252,12 @@ export function DoctorReferralsPage() {
           final_diagnosis: finalDiagnosis.trim(),
           treatment_plan: treatmentPlan.trim(),
           doctor_remarks: doctorRemarks.trim(),
-          prescription: prescriptionText.trim() || null,
+          prescription: prescriptionText.trim() || '',
           prescriptions: prescriptionRows
             .filter((row) => row.medicine_id && row.quantity > 0)
             .map((row) => ({
               medicine_id: Number(row.medicine_id),
-              quantity: row.quantity,
+              quantity: Math.floor(row.quantity),
               dosage_instructions: row.dosage_instructions.trim() || null,
             })),
         });
@@ -236,7 +265,7 @@ export function DoctorReferralsPage() {
         await notifySuccess(`Referral #${detailReferral.id} completed.`, 'Referral Completed');
         navigate('/doctor/referrals');
       } catch (err) {
-        void notifyError(getErrorMessage(err, `Failed to complete referral #${detailReferral.id}.`), 'Update Failed');
+        await notifyError(getErrorMessage(err, `Failed to complete referral #${detailReferral.id}.`), 'Update Failed');
       } finally {
         setSaving(false);
       }
@@ -253,9 +282,11 @@ export function DoctorReferralsPage() {
       try {
         await api.patch(`/referrals/${detailReferral.id}`, { action: 'in_progress' });
         await notifySuccess(`Referral #${detailReferral.id} updated.`, 'Referral Updated');
-        await loadReferralDetail();
+        // 🚨 P4-20 FIX: Do NOT call loadReferralDetail() here.
+        // It would erase whatever the doctor is currently typing.
+        setDetailReferral((prev) => prev ? { ...prev, status: 'in_progress' } : null);
       } catch (err) {
-        void notifyError(getErrorMessage(err, `Failed to update referral #${detailReferral.id}.`), 'Update Failed');
+        await notifyError(getErrorMessage(err, `Failed to update referral #${detailReferral.id}.`), 'Update Failed');
       } finally {
         setSaving(false);
       }
@@ -473,7 +504,17 @@ export function DoctorReferralsPage() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
                     <label className="field">
                       <span>Final Diagnosis *</span>
-                      <textarea rows={2} value={finalDiagnosis} onChange={(e) => setFinalDiagnosis(e.target.value)} placeholder="e.g. Upper Respiratory Tract Infection" disabled={isCompleted || saving} />
+                      <select
+                        value={finalDiagnosis}
+                        onChange={(e) => setFinalDiagnosis(e.target.value)}
+                        disabled={isCompleted || saving}
+                        required
+                      >
+                        <option value="">— Select diagnosis —</option>
+                        {diagnosisOptions.map((opt) => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
                     </label>
                     <label className="field">
                       <span>Treatment Plan *</span>
@@ -515,8 +556,9 @@ export function DoctorReferralsPage() {
                               <input
                                 type="number"
                                 min={1}
+                                step={1}
                                 value={row.quantity}
-                                onChange={(e) => updatePrescriptionRow(row.id, { quantity: Number(e.target.value) })}
+                                onChange={(e) => updatePrescriptionRow(row.id, { quantity: Math.floor(Number(e.target.value)) || 0 })}
                                 disabled={isCompleted || saving}
                                 style={{ width: 80, padding: '0.5rem', borderRadius: 6, border: '1px solid #cbd5e1' }}
                                 placeholder="Qty"
