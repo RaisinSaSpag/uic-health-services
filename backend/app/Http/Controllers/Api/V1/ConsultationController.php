@@ -49,7 +49,13 @@ class ConsultationController extends Controller
         $actorRole = strtolower((string) $request->user()?->role?->name);
         $isStaff = in_array($actorRole, ['nurse', 'coordinator'], true);
 
-        $isReferral = (bool) ($request->input('referred_to_doctor') ?? false);
+        // 🚨 Fix #20: filter_var correctly parses "false", "0", "no" etc.
+        // The old (bool) cast turned the string "false" into true, flipping the validation rules.
+        $isReferral = filter_var(
+            $request->input('referred_to_doctor'),
+            FILTER_VALIDATE_BOOLEAN,
+            FILTER_NULL_ON_FAILURE
+        ) ?? false;
 
         $validated = $request->validate([
             'patient_id' => [$isStaff ? 'required' : 'nullable', 'integer', 'exists:patients,id'],
@@ -64,7 +70,6 @@ class ConsultationController extends Controller
             'chief_complaint' => ['required', 'string', 'max:1000'],
             'symptoms' => ['nullable', 'string', 'max:2000'],
 
-            // 🚨 P1-2 FIX: Structured diagnosis categories
             'diagnosis' => [
                 Rule::requiredIf($isStaff && ! $isReferral),
                 'nullable',
@@ -124,7 +129,6 @@ class ConsultationController extends Controller
             'referred_to_doctor' => ['nullable', 'boolean'],
             'summary' => ['nullable', 'string', 'max:3000'],
             
-            // 🚨 P1-2 FIX: Structured diagnosis categories
             'final_diagnosis' => [
                 'nullable',
                 'string',

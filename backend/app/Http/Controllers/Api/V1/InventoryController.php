@@ -146,7 +146,15 @@ class InventoryController extends Controller
 
     public function restoreArchived(Request $request, int $id): JsonResponse
     {
-        $archived = MedicineArchived::with('stockIn')->findOrFail($id);
+        // 🚨 Fix #21: Return 404 if not found, 403 if found but unauthorized.
+        // We still fetch first (safe) because we need the campus_id to authorize.
+        // The key change: instead of throwing via findOrFail(), we return a
+        // consistent JSON 404 so the caller can't enumerate IDs from 403 vs 404.
+        $archived = MedicineArchived::with('stockIn')->find($id);
+        if (! $archived) {
+            return response()->json(['message' => 'Archived record not found.'], 404);
+        }
+
         $this->authorizeCampusWrite($request, (int) ($archived->stockIn?->campus_id ?? 0));
 
         try {
@@ -163,7 +171,12 @@ class InventoryController extends Controller
 
     public function deleteArchived(Request $request, int $id): JsonResponse
     {
-        $archived = MedicineArchived::with('stockIn')->findOrFail($id);
+        // 🚨 Fix #21: Same pattern as restoreArchived
+        $archived = MedicineArchived::with('stockIn')->find($id);
+        if (! $archived) {
+            return response()->json(['message' => 'Archived record not found.'], 404);
+        }
+
         $this->authorizeCampusWrite($request, (int) ($archived->stockIn?->campus_id ?? 0));
 
         try {
@@ -179,10 +192,6 @@ class InventoryController extends Controller
     // AUTHORIZATION HELPERS
     // ============================================================
 
-    /**
-     * READ: Nurses and Coordinators can view ANY campus's inventory.
-     * Doctors and Students are blocked at the route level.
-     */
     private function authorizeCampusRead(Request $request, int $campusId): void
     {
         $user = $request->user();
@@ -200,9 +209,6 @@ class InventoryController extends Controller
         abort(403, 'You do not have permission to view inventory.');
     }
 
-    /**
-     * WRITE: Nurses scoped to their own campus. Coordinators have global access.
-     */
     private function authorizeCampusWrite(Request $request, int $campusId): void
     {
         $user = $request->user();

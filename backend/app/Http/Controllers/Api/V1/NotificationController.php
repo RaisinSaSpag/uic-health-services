@@ -8,6 +8,7 @@ use App\Models\NotificationRead;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class NotificationController extends Controller
 {
@@ -40,14 +41,11 @@ class NotificationController extends Controller
         'consultation.nurse_finalization',
         'prescription.created',
         'prescription.dispensed',
-        'prescription.dispensed_fifo', // 🚨 P2-20 FIX
+        'prescription.dispensed_fifo',
         'prescription.cancelled',
         'prescription.marked_unavailable',
     ];
 
-    /**
-     * List recent notifications for the current user's campus.
-     */
     public function index(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -101,9 +99,6 @@ class NotificationController extends Controller
         return response()->json($items);
     }
 
-    /**
-     * Unread count for the bell badge.
-     */
     public function unreadCount(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -143,9 +138,6 @@ class NotificationController extends Controller
         return response()->json(['unread' => $unread]);
     }
 
-    /**
-     * Mark all currently-visible notifications as read.
-     */
     public function markRead(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -192,22 +184,26 @@ class NotificationController extends Controller
         }
 
         if (!empty($rows)) {
-            NotificationRead::insert($rows);
+            // 🚨 Fix #16: insertOrIgnore prevents duplicate-key crash on race condition.
+            // If another request inserted the same rows in the millisecond between
+            // the SELECT above and this INSERT, we simply skip them.
+            DB::table('notification_reads')->insertOrIgnore($rows);
         }
 
         return response()->json(['marked_read' => count($rows)]);
     }
 
-    /**
-     * Mark a single notification read (only if it belongs to the user's campus).
-     */
     public function markOneRead(Request $request, AuditLog $auditLog): JsonResponse
     {
         $me = $request->user();
         $roleName = strtolower((string) ($me->role?->name ?? ''));
 
-        // 🚨 SECURITY: nurse/doctor can only mark reads for their own campus
-        if ($roleName !== 'coordinator' && $auditLog->user) {
+        // 🚨 Fix #17: Handle null-user (system-generated) audit logs safely.
+        // Only coordinators can mark those as read, since we can't scope them by campus.
+        if ($roleName !== 'coordinator') {
+            if ($auditLog->user === null) {
+                abort(403, 'Only coordinators can mark system-generated notifications as read.');
+            }
             if ((int) $auditLog->user->campus_id !== (int) $me->campus_id) {
                 abort(403, 'You cannot mark notifications from another campus as read.');
             }
@@ -221,9 +217,6 @@ class NotificationController extends Controller
         return response()->json(['success' => true]);
     }
 
-    /**
-     * 🚨 SECURITY: resolve the campus ID that should be used for a query.
-     */
     private function resolveCampusId(Request $request, array $validated): int
     {
         $me = $request->user();
@@ -236,9 +229,6 @@ class NotificationController extends Controller
         return (int) ($me->campus_id ?? 0);
     }
 
-    /**
-     * Get all user IDs at a given campus.
-     */
     private function campusUserIds(int $campusId): array
     {
         return User::query()
@@ -247,9 +237,6 @@ class NotificationController extends Controller
             ->all();
     }
 
-    /**
-     * Turn an audit log entry into a human-readable message.
-     */
     private function humanMessage(AuditLog $log): string
     {
         $actor = $log->user
@@ -282,7 +269,7 @@ class NotificationController extends Controller
             'consultation.nurse_finalization' => "{$actor} sent a consultation for finalization.",
             'prescription.created' => "{$actor} created a prescription.",
             'prescription.dispensed' => "{$actor} dispensed a prescription.",
-            'prescription.dispensed_fifo' => "{$actor} dispensed a prescription (FIFO).", // 🚨 P2-20 FIX
+            'prescription.dispensed_fifo' => "{$actor} dispensed a prescription (FIFO).",
             'prescription.cancelled' => "{$actor} cancelled a prescription.",
             'prescription.marked_unavailable' => "{$actor} marked a prescription as unavailable.",
             default => "{$actor} performed: {$log->action}",

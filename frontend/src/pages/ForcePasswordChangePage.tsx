@@ -3,10 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { notifyError, notifySuccess } from '../lib/alerts';
 import { useAuth } from '../context/AuthContext';
+import { storeSession } from '../lib/session';
 
 export function ForcePasswordChangePage() {
   const navigate = useNavigate();
-  const { user, refreshProfile } = useAuth(); // 🚨 P4-4 FIX: was refreshUser
+  const { user, refreshProfile } = useAuth();
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -25,20 +26,27 @@ export function ForcePasswordChangePage() {
 
     setLoading(true);
     try {
-      await api.post('/auth/change-password', {
+      // 🚨 P5-1 FIX: Capture the new token from the response
+      const res = await api.post<{
+        access_token: string;
+        user: Record<string, unknown>;
+      }>('/auth/change-password', {
         new_password: newPassword,
         new_password_confirmation: confirmPassword,
       });
-      
+
+      // Store the new token BEFORE calling refreshProfile
+      // (the old token is now invalid because tokens_valid_after was bumped).
+      if (res.data.access_token) {
+        storeSession(res.data.access_token, res.data.user as any);
+      }
+
       notifySuccess('Password updated successfully!');
-      
-      // Instead of logging out, we refresh the user state.
-      // This updates `must_change_password` to false and lets the AppShell render the portal.
+
       if (refreshProfile) {
         await refreshProfile();
       }
-      
-      // Navigate to the dashboard/portal
+
       navigate('/');
     } catch (err) {
       notifyError('Failed to update password. Please try again.');

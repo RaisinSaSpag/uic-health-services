@@ -61,10 +61,35 @@ class ReportController extends Controller
         $campuses = Campus::all();
         $reportData = [];
 
-        $stockTotals = DB::table('medicine_stock_in')
-            ->select('campus_id', DB::raw('SUM(quantity) as total_stock'))
+        // 🚨 Fix #8: Calculate TRUE available stock (subtract dispensed + archived)
+        $stockIn = DB::table('medicine_stock_in')
+            ->select('campus_id', DB::raw('SUM(quantity) as total'))
             ->groupBy('campus_id')
-            ->pluck('total_stock', 'campus_id');
+            ->pluck('total', 'campus_id')
+            ->toArray();
+        
+        $stockOut = DB::table('medicine_stock_out as mso')
+            ->join('medicine_stock_in as msi', 'mso.stock_in_id', '=', 'msi.id')
+            ->select('msi.campus_id', DB::raw('SUM(mso.quantity_dispensed) as total'))
+            ->groupBy('msi.campus_id')
+            ->pluck('total', 'msi.campus_id')
+            ->toArray();
+        
+        $stockArchived = DB::table('medicine_archived as ma')
+            ->join('medicine_stock_in as msi', 'ma.stock_in_id', '=', 'msi.id')
+            ->select('msi.campus_id', DB::raw('SUM(ma.quantity) as total'))
+            ->groupBy('msi.campus_id')
+            ->pluck('total', 'msi.campus_id')
+            ->toArray();
+        
+        $stockTotals = [];
+        foreach ($stockIn as $campusId => $totalIn) {
+            $stockTotals[$campusId] = max(0, 
+                (int) $totalIn 
+                - (int) ($stockOut[$campusId] ?? 0) 
+                - (int) ($stockArchived[$campusId] ?? 0)
+            );
+        }
 
         foreach ($campuses as $campus) {
             $consultationsQuery = Consultation::whereHas('patient', function ($q) use ($campus) {
@@ -89,15 +114,28 @@ class ReportController extends Controller
 
             $totalStockAvailable = (int) ($stockTotals[$campus->id] ?? 0);
             
-            $lowStockItems = DB::table('medicine_stock_in')
-                ->where('campus_id', $campus->id)
-                ->where('quantity', '<=', 50)
+            // 🚨 Fix #23: Count PER-MEDICINE available stock, not per-batch.
+            // A medicine with 3 batches of 10 each should count as ONE low-stock item, not three.
+            $lowStockItems = DB::table('medicine_stock_in as msi')
+                ->where('msi.campus_id', $campus->id)
+                ->selectRaw('
+                    msi.medicine_id,
+                    SUM(msi.quantity) 
+                    - COALESCE((SELECT SUM(quantity_dispensed) FROM medicine_stock_out WHERE stock_in_id IN (SELECT id FROM medicine_stock_in WHERE campus_id = ? AND medicine_id = msi.medicine_id)), 0)
+                    - COALESCE((SELECT SUM(quantity) FROM medicine_archived WHERE stock_in_id IN (SELECT id FROM medicine_stock_in WHERE campus_id = ? AND medicine_id = msi.medicine_id)), 0)
+                    AS available
+                ', [$campus->id, $campus->id])
+                ->groupBy('msi.medicine_id')
+                ->havingRaw('available <= 50')
+                ->get()
                 ->count();
-                
+
+            // 🚨 Fix #23: Exclude already-expired batches from "expiring soon"
             $expiringItems = DB::table('medicine_stock_in')
                 ->where('campus_id', $campus->id)
                 ->whereNotNull('expiration_date')
-                ->where('expiration_date', '<=', now()->addDays(30)->format('Y-m-d'))
+                ->whereDate('expiration_date', '>=', now()->toDateString())
+                ->whereDate('expiration_date', '<=', now()->addDays(30)->toDateString())
                 ->count();
 
             $topDiseases = (clone $consultationsQuery)
@@ -149,12 +187,10 @@ class ReportController extends Controller
 
         $campus = Campus::where('code', $campusCode)->firstOrFail();
 
-        // 1. Base query for this campus
         $consultationsQuery = Consultation::whereHas('patient', function ($q) use ($campus) {
             $q->where('campus_id', $campus->id);
         })->whereMonth('created_at', $month)->whereYear('created_at', $year);
 
-        // 2. Top Diagnoses
         $topDiseases = (clone $consultationsQuery)
             ->whereNotNull('diagnosis')
             ->selectRaw('diagnosis, count(*) as count')
@@ -163,14 +199,12 @@ class ReportController extends Controller
             ->take(5)
             ->get();
 
-        // 3. Demographics
         $demographics = Patient::where('campus_id', $campus->id)
             ->selectRaw('patient_category, count(*) as count')
             ->groupBy('patient_category')
             ->pluck('count', 'patient_category')
             ->toArray();
 
-        // 4. Recent Consultations (for the table)
         $recentConsultations = (clone $consultationsQuery)
             ->with(['patient.user', 'medicalRecord'])
             ->orderByDesc('created_at')

@@ -46,12 +46,16 @@ class PatientController extends Controller
             'birth_date' => ['required', 'date'],
         ]);
 
+        // 🚨 Fix #22: Escape % and _ wildcards so users can't search all patients
+        $escapedFirst = addcslashes($validated['first_name'], '%_\\');
+        $escapedLast = addcslashes($validated['last_name'], '%_\\');
+
         $query = Patient::query()
             ->with(['user', 'campus', 'currentEnrollment.campus'])
             ->whereDate('birth_date', $validated['birth_date'])
-            ->whereHas('user', function ($q) use ($validated) {
-                $q->where('first_name', 'like', '%' . $validated['first_name'] . '%')
-                  ->where('last_name', 'like', '%' . $validated['last_name'] . '%');
+            ->whereHas('user', function ($q) use ($escapedFirst, $escapedLast) {
+                $q->where('first_name', 'like', '%' . $escapedFirst . '%')
+                  ->where('last_name', 'like', '%' . $escapedLast . '%');
             });
 
         $matches = $query->take(10)->get()->map(function ($patient) {
@@ -116,8 +120,14 @@ class PatientController extends Controller
                 'nullable',
                 'email',
                 'max:255',
+                // 🚨 Fix #3: Reject duplicate emails (case-insensitive)
+                function ($attribute, $value, $fail) {
+                    if ($value && User::whereRaw('LOWER(email) = ?', [strtolower($value)])->exists()) {
+                        $fail('This email is already registered.');
+                    }
+                },
             ],
-            'birth_date' => ['required', 'date'],
+            'birth_date' => ['required', 'date', 'before_or_equal:today'],
             'age' => ['nullable', 'integer', 'min:1', 'max:120'],
             'sex' => ['required', 'string', 'max:20'],
             'patient_category' => ['required', 'in:grade_school,high_school,senior_high_school,college,employee'],
@@ -147,7 +157,13 @@ class PatientController extends Controller
             'current_medications' => ['nullable', 'string', 'max:2000'],
             'medication_instructions' => ['nullable', 'string', 'max:2000'],
             'preferred_hospital' => ['nullable', 'string', 'max:120'],
-            'guardian_signature_base64' => ['nullable', 'string'],
+            
+            'guardian_signature_base64' => [
+                'nullable',
+                'string',
+                'max:500000',
+                'regex:/^data:image\/(png|jpe?g|webp);base64,[A-Za-z0-9+\/=]+$/',
+            ],
             'guardian_printed_name' => ['nullable', 'string', 'max:120'],
             'guardian_relationship' => ['nullable', 'string', 'max:50'],
             'emergency_contact_name' => ['nullable', 'string', 'max:120'],
@@ -163,12 +179,29 @@ class PatientController extends Controller
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
 
+        // 🚨 P5-5 FIX: For minors, require EITHER a signature OR an explicit consent method.
+        $isMinor = in_array($validated['patient_category'], ['grade_school', 'high_school', 'senior_high_school'], true);
+        $hasSignature = !empty($validated['guardian_signature_base64']);
+        $hasConsentMethod = !empty($validated['consent_method']);
+
+        if ($isMinor && !$hasSignature && !$hasConsentMethod) {
+            return response()->json([
+                'message' => 'Minor patients require either a guardian signature or an explicit consent method (verbal_phone, emergency, or guardian_designate).',
+                'errors' => [
+                    'consent' => ['Please record how consent was obtained from the guardian.'],
+                ],
+            ], 422);
+        }
+
         return DB::transaction(function () use ($validated, $request) {
             $roleName = $validated['patient_type'] === 'employee' ? 'employee' : 'student';
+            $role = \App\Models\Role::where('name', $roleName)->first();
+            
+            if (!$role) {
+                throw new RuntimeException("Role '$roleName' is not configured. Contact IT.");
+            }
 
             $userEmail = !empty($validated['email']) ? strtolower($validated['email']) : 'unassigned@uic.edu.ph';
-            
-            // 🚨 P3-6 FIX: Use a secure random password instead of the email
             $userPassword = Str::random(16);
 
             // 1. Create User
@@ -177,7 +210,7 @@ class PatientController extends Controller
                 'last_name' => $validated['last_name'],
                 'email' => $userEmail,
                 'password' => Hash::make($userPassword),
-                'role_id' => \App\Models\Role::where('name', $roleName)->value('id'),
+                'role_id' => $role->id,
                 'campus_id' => $validated['campus_id'],
                 'is_active' => true,
                 'must_change_password' => !empty($validated['email']),
@@ -221,7 +254,7 @@ class PatientController extends Controller
                 'notes' => $validated['notes'] ?? null,
             ]);
 
-            // 3. Create Enrollment (🚨 FIXED MAPPING)
+            // 3. Create Enrollment
             $enrollmentData = array_merge($validated, [
                 'category' => $validated['patient_category'],
                 'student_level' => $validated['student_level'] ?? ($validated['patient_category'] === 'college' ? 'college' : 'basic'),
@@ -253,13 +286,18 @@ class PatientController extends Controller
                 $email = 'walkin.' . uniqid() . '@uic.edu.ph';
                 $isEmployee = $validated['patient_category'] === 'employee';
                 $roleName = $isEmployee ? 'employee' : 'student';
+                $role = \App\Models\Role::where('name', $roleName)->first();
+                
+                if (!$role) {
+                    throw new RuntimeException("Role '$roleName' is not configured.");
+                }
 
                 $user = User::create([
                     'first_name' => $validated['first_name'],
                     'last_name' => $validated['last_name'],
                     'email' => $email,
-                    'password' => Hash::make($email),
-                    'role_id' => \App\Models\Role::where('name', $roleName)->value('id'),
+                    'password' => Hash::make(Str::random(32)),
+                    'role_id' => $role->id,
                     'campus_id' => $validated['campus_id'],
                     'is_active' => true,
                     'must_change_password' => true,
@@ -332,14 +370,17 @@ class PatientController extends Controller
 
         $query = $validated['q'];
 
+        // 🚨 Fix #22: Escape % and _ wildcards
+        $escaped = addcslashes($query, '%_\\');
+
         $patients = Patient::query()
             ->with(['user', 'campus', 'currentEnrollment'])
-            ->where(function ($q) use ($query) {
-                $q->where('patient_number', 'like', "%{$query}%")
-                  ->orWhereHas('user', function ($uq) use ($query) {
-                      $uq->where('first_name', 'like', "%{$query}%")
-                         ->orWhere('last_name', 'like', "%{$query}%")
-                         ->orWhere('email', 'like', "%{$query}%");
+            ->where(function ($q) use ($escaped) {
+                $q->where('patient_number', 'like', "%{$escaped}%")
+                  ->orWhereHas('user', function ($uq) use ($escaped) {
+                      $uq->where('first_name', 'like', "%{$escaped}%")
+                         ->orWhere('last_name', 'like', "%{$escaped}%")
+                         ->orWhere('email', 'like', "%{$escaped}%");
                   });
             })
             ->limit(10)

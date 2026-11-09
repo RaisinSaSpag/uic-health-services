@@ -24,7 +24,6 @@ class PrescriptionController extends Controller
 
         $consultationId = (int) $validated['consultation_id'];
 
-        // 🚨 SECURITY: Doctors can only see prescriptions for their assigned consultations.
         $this->assertCanAccessConsultation($request, $consultationId);
 
         $prescriptions = $this->prescriptionService->listForConsultation($consultationId);
@@ -41,7 +40,6 @@ class PrescriptionController extends Controller
             'dosage_instructions' => ['nullable', 'string', 'max:500'],
         ]);
 
-        // 🚨 SECURITY: Doctors can only create prescriptions for their assigned consultations.
         $this->assertCanAccessConsultation($request, (int) $validated['consultation_id']);
 
         try {
@@ -58,7 +56,6 @@ class PrescriptionController extends Controller
 
     public function show(Request $request, Prescription $prescription): JsonResponse
     {
-        // 🚨 SECURITY: Doctors can only view prescriptions for their assigned consultations.
         $this->assertCanAccessConsultation($request, (int) $prescription->consultation_id);
 
         return response()->json(
@@ -66,9 +63,6 @@ class PrescriptionController extends Controller
         );
     }
 
-    /**
-     * FIFO Dispense — auto-picks the oldest non-expired batch from the Nurse's campus.
-     */
     public function dispenseFifo(Request $request, Prescription $prescription): JsonResponse
     {
         try {
@@ -83,9 +77,6 @@ class PrescriptionController extends Controller
         }
     }
 
-    /**
-     * Mark a prescription unavailable (out of stock) and notify the Doctor.
-     */
     public function markUnavailable(Request $request, Prescription $prescription): JsonResponse
     {
         $validated = $request->validate(['reason' => ['nullable', 'string', 'max:500']]);
@@ -103,31 +94,12 @@ class PrescriptionController extends Controller
         }
     }
 
-    /**
-     * Manual dispense (legacy, kept for compatibility).
-     */
-    public function dispense(Request $request, Prescription $prescription): JsonResponse
-    {
-        $validated = $request->validate([
-            'stock_in_id' => ['required', 'integer', 'min:1'],
-        ]);
-
-        try {
-            $updated = $this->prescriptionService->dispense(
-                $prescription->id,
-                $validated,
-                $request->user()->id
-            );
-
-            return response()->json($updated->load(['medicine', 'dispensedBy', 'consultation']));
-        } catch (RuntimeException $exception) {
-            return response()->json(['message' => $exception->getMessage()], 409);
-        }
-    }
+    // 🚨 Fix #9: Deleted the legacy `dispense()` method entirely.
+    // The old PATCH /prescriptions/{id}/dispense route was removed in Phase 1.
+    // Keeping the method would allow re-enabling the FIFO bypass in a future commit.
 
     public function cancel(Request $request, Prescription $prescription): JsonResponse
     {
-        // 🚨 SECURITY: Doctors can only cancel prescriptions for their assigned consultations.
         $this->assertCanAccessConsultation($request, (int) $prescription->consultation_id);
 
         try {
@@ -139,13 +111,6 @@ class PrescriptionController extends Controller
         }
     }
 
-    /**
-     * Ensures the acting user has access to the given consultation's prescriptions.
-     *
-     * Rules:
-     *   - Nurses and Coordinators: no restriction (they handle all consultations).
-     *   - Doctors: must be the assigned doctor on the consultation's referral.
-     */
     private function assertCanAccessConsultation(Request $request, int $consultationId): void
     {
         $user = $request->user();
@@ -161,7 +126,7 @@ class PrescriptionController extends Controller
 
         $consultation = Consultation::with('referral')->find($consultationId);
 
-        if (!$consultation) {
+        if (! $consultation) {
             abort(404, 'Consultation not found.');
         }
 

@@ -138,6 +138,26 @@ class AuthController extends Controller
         $user->tokens_valid_after = now();
         $user->save();
 
-        return response()->json(['message' => 'Password updated successfully.']);
+        // 🚨 P5-1 FIX: Issue a fresh token so the user isn't logged out
+        // of their own session right after changing their password.
+        $user->load(['role', 'campus', 'department']);
+        $newToken = $this->jwtService->issueToken($user);
+
+        return response()->json([
+            'message' => 'Password updated successfully.',
+            'access_token' => $newToken,
+            'token_type' => 'Bearer',
+            'user' => [
+                'id' => $user->id,
+                'email' => $user->email,
+                'first_name' => $user->first_name,
+                'last_name' => $user->last_name,
+                'role' => $user->role?->name,
+                'campus_id' => $user->campus_id,
+                'campus' => $user->campus?->name,
+                'department' => $user->department?->name,
+                'must_change_password' => false,
+            ],
+        ]);
     }
 }

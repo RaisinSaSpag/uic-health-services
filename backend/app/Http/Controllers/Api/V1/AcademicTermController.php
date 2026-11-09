@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AcademicTerm;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class AcademicTermController extends Controller
 {
@@ -28,9 +29,13 @@ class AcademicTermController extends Controller
 
     public function activate(Request $request, AcademicTerm $term): JsonResponse
     {
-        AcademicTerm::where('id', '!=', $term->id)->update(['is_active' => false]);
-        $term->update(['is_active' => true]);
+        // 🚨 Fix #11: Wrap in transaction so both updates are atomic.
+        // If the second update fails, we don't leave the system with zero active terms.
+        DB::transaction(function () use ($term) {
+            AcademicTerm::where('id', '!=', $term->id)->update(['is_active' => false]);
+            $term->update(['is_active' => true]);
+        });
 
-        return response()->json(['message' => 'Term activated successfully.', 'term' => $term]);
+        return response()->json(['message' => 'Term activated successfully.', 'term' => $term->fresh()]);
     }
 }

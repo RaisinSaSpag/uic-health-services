@@ -18,9 +18,16 @@ class AuditLogController extends Controller
             'entity_id' => ['nullable', 'integer', 'min:1'],
             'user_id' => ['nullable', 'integer', 'min:1'],
             'date_from' => ['nullable', 'date'],
-            'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
+            // 🚨 Fix #10: Removed 'after_or_equal:date_from' — it fails when date_from is missing
+            'date_to' => ['nullable', 'date'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
+
+        // 🚨 Fix #10: Manually validate ordering only when both dates are provided
+        if (isset($validated['date_from'], $validated['date_to']) 
+            && $validated['date_to'] < $validated['date_from']) {
+            return response()->json(['message' => 'date_to must be after or equal to date_from.'], 422);
+        }
 
         $query = AuditLog::query()->with('user');
 
@@ -67,9 +74,16 @@ class AuditLogController extends Controller
             'campus_id' => ['required', 'integer', 'exists:campuses,id'],
             'action' => ['nullable', 'string', 'max:120'],
             'date_from' => ['nullable', 'date'],
-            'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
+            // 🚨 Fix #10: Removed 'after_or_equal:date_from' — it fails when date_from is missing
+            'date_to' => ['nullable', 'date'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
+
+        // 🚨 Fix #10: Manually validate ordering only when both dates are provided
+        if (isset($validated['date_from'], $validated['date_to']) 
+            && $validated['date_to'] < $validated['date_from']) {
+            return response()->json(['message' => 'date_to must be after or equal to date_from.'], 422);
+        }
 
         // Get all user IDs at this campus
         $userIds = User::query()

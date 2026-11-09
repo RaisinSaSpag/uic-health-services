@@ -12,7 +12,9 @@ class HealthController extends Controller
         return response()->json([
             'status' => 'ok',
             'service' => 'HSMS API',
-            'phase' => 'phase-2-backend-foundation',
+            // 🚨 Fix #24: Correct the stale phase label
+            'phase' => 'production-ready',
+            'version' => '1.0.0',
             'timestamp' => now()->toIso8601String(),
         ]);
     }
