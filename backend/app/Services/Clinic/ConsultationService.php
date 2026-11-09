@@ -20,9 +20,6 @@ class ConsultationService
     ) {
     }
 
-    /**
-     * @param  array<string, mixed>  $payload
-     */
     public function create(User $user, array $payload): Consultation
     {
         $role = strtolower((string) $user->role?->name);
@@ -33,7 +30,6 @@ class ConsultationService
 
         $patient = $this->resolveTargetPatient($user, $payload);
         
-        // 🚨 P2-6 FIX: Use effectiveOn so backdated consultations get the correct historical enrollment
         $consultationDateInput = $payload['consultation_date'] ?? null;
         $enrollmentDate = $consultationDateInput ? $consultationDateInput : now();
         $currentEnrollment = $this->enrollmentService->effectiveOn($patient, $enrollmentDate);
@@ -41,9 +37,13 @@ class ConsultationService
         $consultationType = (string) $payload['consultation_type'];
         $isWalkIn = $consultationType === 'walk_in';
 
+        // 🚨 P2-8 FIX: Use ?? so missing keys don't throw "Undefined array key"
         $consultedAt = $isWalkIn
             ? now()
-            : $this->parseConsultedAt((string) $payload['consultation_date'], (string) $payload['consultation_time']);
+            : $this->parseConsultedAt(
+                (string) ($payload['consultation_date'] ?? ''),
+                (string) ($payload['consultation_time'] ?? '')
+            );
 
         $referredToDoctor = (bool) ($payload['referred_to_doctor'] ?? false);
 
@@ -103,9 +103,6 @@ class ConsultationService
         return $consultation->load(['patient.user', 'nurse', 'referral', 'medicalRecord']);
     }
 
-    /**
-     * @param  array<string, mixed>  $filters
-     */
     public function list(User $user, array $filters, int $perPage): LengthAwarePaginator
     {
         $query = Consultation::query()
@@ -139,7 +136,6 @@ class ConsultationService
             $query->where('patient_id', (int) $filters['patient_id']);
         }
 
-        // 🚨 ADDED FOR ACADEMIC TERMS: Date range filtering
         if (isset($filters['date_from']) && $filters['date_from']) {
             $query->whereDate('created_at', '>=', $filters['date_from']);
         }
@@ -163,9 +159,6 @@ class ConsultationService
         return $consultation;
     }
 
-    /**
-     * @param  array<string, mixed>  $payload
-     */
     public function updateByNurse(User $actor, Consultation $consultation, array $payload): Consultation
     {
         $role = strtolower((string) $actor->role?->name);
@@ -185,9 +178,6 @@ class ConsultationService
         };
     }
 
-    /**
-     * @param  array<string, mixed>  $payload
-     */
     private function resolveTargetPatient(User $actor, array $payload): Patient
     {
         $role = strtolower((string) $actor->role?->name);
@@ -285,9 +275,6 @@ class ConsultationService
         return $consultation->refresh()->load(['patient.user', 'nurse', 'referral', 'medicalRecord']);
     }
 
-    /**
-     * @param  array<string, mixed>  $payload
-     */
     private function triageConsultation(User $actor, Consultation $consultation, array $payload): Consultation
     {
         if (! in_array($consultation->status, ['pending_consultation', 'nurse_assessment', 'referred_to_doctor'], true)) {
@@ -320,6 +307,24 @@ class ConsultationService
             'status' => $referredToDoctor ? 'referred_to_doctor' : 'nurse_assessment',
         ]);
 
+        // 🚨 P2-1 FIX: If the nurse un-refers, close any open referral row
+        // so they can create a new referral later and the doctor can't complete a stale one.
+        if (!$referredToDoctor) {
+            $openReferral = $consultation->referral;
+            if ($openReferral && in_array($openReferral->status, ['pending_doctor', 'in_progress'], true)) {
+                $openReferral->update(['status' => 'cancelled']);
+                
+                $this->auditLogService->log(
+                    actor: $actor,
+                    action: 'referral.cancelled_by_triage',
+                    entityType: 'referral',
+                    entityId: $openReferral->id,
+                    oldValues: ['status' => $openReferral->status],
+                    newValues: ['status' => 'cancelled'],
+                );
+            }
+        }
+
         $this->auditLogService->log(
             actor: $actor,
             action: 'consultation.triaged',
@@ -336,9 +341,6 @@ class ConsultationService
         return $consultation->refresh()->load(['patient.user', 'nurse', 'referral', 'medicalRecord']);
     }
 
-    /**
-     * @param  array<string, mixed>  $payload
-     */
     private function completeConsultation(User $actor, Consultation $consultation, array $payload): Consultation
     {
         if ($consultation->status === 'completed') {
@@ -391,7 +393,7 @@ class ConsultationService
                 'treatment_plan' => $treatmentPlan,
                 'prescription' => $prescription,
                 'follow_up_date' => $payload['follow_up_date'] ?? null,
-                'nurse_finalization_notes' => $payload['nurse_finalization_notes'] ?? null, // 🚨 P2-9 FIX
+                'nurse_finalization_notes' => $payload['nurse_finalization_notes'] ?? null,
                 'finalized_at' => now(),
             ];
 
@@ -448,26 +450,40 @@ class ConsultationService
             throw new RuntimeException('Consultation cannot be cancelled in its current status.');
         }
 
-        $oldValues = [
-            'status' => $consultation->status,
-        ];
-
-        $consultation->update([
-            'nurse_id' => $consultation->nurse_id ?? $actor->id,
-            'status' => 'cancelled',
-        ]);
-
-        $this->auditLogService->log(
-            actor: $actor,
-            action: 'consultation.cancelled',
-            entityType: 'consultation',
-            entityId: $consultation->id,
-            oldValues: $oldValues,
-            newValues: [
+        // 🚨 P2-7 FIX: Cascade cancellation to prescriptions and referral
+        return DB::transaction(function () use ($actor, $consultation) {
+            $oldValues = [
                 'status' => $consultation->status,
-            ],
-        );
+            ];
 
-        return $consultation->refresh()->load(['patient.user', 'nurse', 'referral', 'medicalRecord']);
+            $consultation->update([
+                'nurse_id' => $consultation->nurse_id ?? $actor->id,
+                'status' => 'cancelled',
+            ]);
+
+            // Cancel any pending prescriptions
+            \App\Models\Prescription::where('consultation_id', $consultation->id)
+                ->where('status', 'pending')
+                ->update(['status' => 'cancelled']);
+
+            // Close any open referral
+            $openReferral = $consultation->referral;
+            if ($openReferral && in_array($openReferral->status, ['pending_doctor', 'in_progress'], true)) {
+                $openReferral->update(['status' => 'cancelled']);
+            }
+
+            $this->auditLogService->log(
+                actor: $actor,
+                action: 'consultation.cancelled',
+                entityType: 'consultation',
+                entityId: $consultation->id,
+                oldValues: $oldValues,
+                newValues: [
+                    'status' => $consultation->status,
+                ],
+            );
+
+            return $consultation->refresh()->load(['patient.user', 'nurse', 'referral', 'medicalRecord']);
+        });
     }
 }

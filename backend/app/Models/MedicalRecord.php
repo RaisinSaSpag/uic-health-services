@@ -20,6 +20,7 @@ class MedicalRecord extends Model
         'treatment_plan',
         'prescription',
         'follow_up_date',
+        'nurse_finalization_notes', // 🚨 P3-4 FIX: Added so Eloquent stops dropping it
         'finalized_at',
     ];
 

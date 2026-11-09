@@ -156,7 +156,6 @@ class EnrollmentService
                 );
             }
 
-            // 🚨 P2-12 FIX: Ensure date logic respects date boundaries and prevents future dates.
             $newValidFrom = isset($data['valid_from'])
                 ? Carbon::parse((string) $data['valid_from'])->startOfDay()
                 : now()->startOfDay();
@@ -182,8 +181,6 @@ class EnrollmentService
                 'valid_from' => $currentValidFrom->toDateString(),
             ];
 
-            // Close the old enrollment (day before new one starts).
-            // 🚨 P2-22 FIX: Do NOT overwrite the original change_reason. It is preserved for the audit trail.
             $current->update([
                 'is_current' => false,
                 'valid_to' => $newValidFrom->copy()->subDay()->toDateString(),
@@ -278,17 +275,26 @@ class EnrollmentService
             return $enrollment;
         }
 
-        $enrollment->update($updates);
+        // 🚨 P2-4 FIX: Wrap in transaction AND sync the changes to the patients table
+        return DB::transaction(function () use ($enrollment, $updates, $newValues, $actor, $oldValues) {
+            $enrollment->update($updates);
 
-        $this->auditLogService->log(
-            actor: $actor,
-            action: 'enrollment.corrected',
-            entityType: 'patient_enrollment',
-            entityId: $enrollment->id,
-            oldValues: $oldValues,
-            newValues: $newValues,
-        );
+            // Sync the corrected fields back to the patients table
+            $patient = \App\Models\Patient::find($enrollment->patient_id);
+            if ($patient) {
+                $patient->update($newValues);
+            }
 
-        return $enrollment->fresh();
+            $this->auditLogService->log(
+                actor: $actor,
+                action: 'enrollment.corrected',
+                entityType: 'patient_enrollment',
+                entityId: $enrollment->id,
+                oldValues: $oldValues,
+                newValues: $newValues,
+            );
+
+            return $enrollment->fresh();
+        });
     }
 }

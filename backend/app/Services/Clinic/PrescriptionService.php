@@ -16,9 +16,6 @@ class PrescriptionService
         private readonly InventoryService $inventoryService,
     ) {}
 
-    /**
-     * Create a new prescription.
-     */
     public function create(array $payload, int $actorId): Prescription
     {
         $validated = [
@@ -72,14 +69,6 @@ class PrescriptionService
         });
     }
 
-    // 🚨 Fix #9: Deleted the legacy `dispense()` method entirely.
-    // The old PATCH /prescriptions/{id}/dispense route was removed in Phase 1.
-    // Keeping the method was a trap — a future developer might re-add the route
-    // and silently bypass the FIFO ordering, expiry checks, and campus scoping.
-
-    /**
-     * FIFO Dispense — auto-picks the oldest non-expired batch from the nurse's campus.
-     */
     public function dispenseFifo(int $prescriptionId, int $nurseId): Prescription
     {
         return DB::transaction(function () use ($prescriptionId, $nurseId) {
@@ -149,18 +138,36 @@ class PrescriptionService
         });
     }
 
-    /**
-     * Mark a prescription as unavailable (out of stock).
-     */
     public function markUnavailable(int $prescriptionId, int $nurseId, ?string $reason = null): Prescription
     {
         return DB::transaction(function () use ($prescriptionId, $nurseId, $reason) {
-            $prescription = Prescription::lockForUpdate()->find($prescriptionId);
+            $prescription = Prescription::with('consultation')->lockForUpdate()->find($prescriptionId);
             if (!$prescription) {
                 throw new RuntimeException('Prescription not found.');
             }
             if ($prescription->status !== 'pending') {
                 throw new RuntimeException('Only pending prescriptions can be marked unavailable.');
+            }
+
+            // 🚨 P2-6 FIX: Cannot mark unavailable if the consultation is closed
+            if (in_array($prescription->consultation->status, ['completed', 'cancelled'])) {
+                throw new RuntimeException('Cannot mark a prescription unavailable for a completed or cancelled consultation.');
+            }
+
+            // 🚨 P2-6 FIX: Nurses can only affect their own campus's prescriptions
+            $nurse = User::with('role')->find($nurseId);
+            if (!$nurse) {
+                throw new RuntimeException('Acting user not found.');
+            }
+
+            $roleName = strtolower((string) $nurse->role?->name);
+            if ($roleName !== 'coordinator') {
+                $patientCampusId = \App\Models\Patient::where('id', $prescription->consultation->patient_id)
+                    ->value('campus_id');
+                
+                if ($patientCampusId && (int) $nurse->campus_id !== (int) $patientCampusId) {
+                    throw new RuntimeException('You can only mark prescriptions unavailable for your own campus.');
+                }
             }
 
             $prescription->update(['status' => 'unavailable']);
@@ -176,9 +183,6 @@ class PrescriptionService
         });
     }
 
-    /**
-     * Cancel a prescription.
-     */
     public function cancel(int $prescriptionId, int $actorId): Prescription
     {
         return DB::transaction(function () use ($prescriptionId, $actorId) {

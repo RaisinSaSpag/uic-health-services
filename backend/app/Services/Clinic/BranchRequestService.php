@@ -46,8 +46,6 @@ class BranchRequestService
             throw new RuntimeException('You cannot request medicine from your own campus.');
         }
 
-        // 🚨 SECURITY: nurses may only request stock FOR THEIR OWN CAMPUS.
-        // Coordinators may request on behalf of any campus.
         $actorRole = strtolower((string) $actor->role?->name);
         if ($actorRole !== 'coordinator' && (int) $actor->campus_id !== $fromCampusId) {
             throw new RuntimeException('You may only create branch requests for your own campus.');
@@ -61,7 +59,6 @@ class BranchRequestService
             throw new RuntimeException('Quantity must be greater than zero.');
         }
 
-        // Validate that the supplying campus has enough stock
         $availableStock = MedicineStockIn::query()
             ->where('campus_id', $toCampusId)
             ->where('medicine_id', $medicineId)
@@ -108,7 +105,6 @@ class BranchRequestService
 
     public function approve(int $requestId, int $actorId): BranchRequest
     {
-        // 🚨 P2-24 FIX: Wrap in transaction and use lockForUpdate
         return DB::transaction(function () use ($requestId, $actorId) {
             $actor = $this->loadActor($actorId);
             
@@ -132,7 +128,6 @@ class BranchRequestService
 
     public function reject(int $requestId, int $actorId, string $reason = ''): BranchRequest
     {
-        // 🚨 P2-24 FIX: Wrap in transaction and use lockForUpdate
         return DB::transaction(function () use ($requestId, $actorId, $reason) {
             $actor = $this->loadActor($actorId);
             
@@ -170,7 +165,6 @@ class BranchRequestService
                 throw new RuntimeException('Only approved requests can be completed.');
             }
 
-            // 🚨 SECURITY: only the supplying campus (or coordinator) may complete the transfer
             $actorRole = strtolower((string) $actor->role?->name);
             if ($actorRole !== 'coordinator' && (int) $actor->campus_id !== (int) $request->to_campus_id) {
                 throw new RuntimeException('Only the supplying campus (or a coordinator) can complete this request.');
@@ -191,12 +185,17 @@ class BranchRequestService
             $remainingToDeduct = $request->quantity_requested;
             $supplyBatches = $this->inventoryService->availableStockForCampus($request->to_campus_id)
                 ->where('medicine_id', $request->medicine_id)
-                ->sortBy('expiration_date'); // FEFO — earliest expiry first
+                ->sortBy('expiration_date');
 
-            $transferPlan = []; // Track what we're moving so the receiving batch matches
+            $transferPlan = [];
 
             foreach ($supplyBatches as $batch) {
                 if ($remainingToDeduct <= 0) break;
+
+                // 🚨 P2-9 FIX: Skip batches with no expiration date (stockIn requires one)
+                if (empty($batch->expiration_date)) {
+                    continue;
+                }
 
                 $deductAmount = min($remainingToDeduct, $batch->available_quantity);
                 if ($deductAmount > 0) {
@@ -212,6 +211,14 @@ class BranchRequestService
 
                     $remainingToDeduct -= $deductAmount;
                 }
+            }
+
+            // 🚨 P2-9 FIX: If we couldn't source enough (null-expiration batches), fail cleanly
+            if ($remainingToDeduct > 0) {
+                throw new RuntimeException(
+                    'Cannot complete transfer: some stock batches have no expiration date and cannot be transferred. ' .
+                    'Contact IT to fix the source data.'
+                );
             }
 
             // 3. Create receiving batches that preserve each source batch's expiration
@@ -233,9 +240,6 @@ class BranchRequestService
         });
     }
 
-    /**
-     * Load actor with role/campus for authorization checks.
-     */
     private function loadActor(int $actorId): User
     {
         $actor = User::with('role')->find($actorId);
@@ -245,16 +249,12 @@ class BranchRequestService
         return $actor;
     }
 
-    /**
-     * Only a nurse/coordinator at the SUPPLYING campus can approve or reject.
-     * Self-approval is forbidden unless the actor is a coordinator.
-     */
     private function assertCanApproveOrReject(User $actor, BranchRequest $request, int $actorId): void
     {
         $roleName = strtolower((string) $actor->role?->name);
 
         if ($roleName === 'coordinator') {
-            return; // Coordinators can approve/reject any request
+            return;
         }
 
         if ((int) $actor->campus_id !== (int) $request->to_campus_id) {
