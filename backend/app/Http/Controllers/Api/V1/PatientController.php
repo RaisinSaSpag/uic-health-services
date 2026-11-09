@@ -202,7 +202,9 @@ class PatientController extends Controller
             }
 
             $userEmail = !empty($validated['email']) ? strtolower($validated['email']) : 'unassigned@uic.edu.ph';
-            $userPassword = Str::random(16);
+            
+            // 🚨 REVERTED (P3-6): Use the email as the default password
+            $userPassword = $userEmail;
 
             // 1. Create User
             $user = User::create([
@@ -296,7 +298,8 @@ class PatientController extends Controller
                     'first_name' => $validated['first_name'],
                     'last_name' => $validated['last_name'],
                     'email' => $email,
-                    'password' => Hash::make(Str::random(32)),
+                    // 🚨 REVERTED (P3-6): Use the email as the password
+                    'password' => Hash::make($email),
                     'role_id' => $role->id,
                     'campus_id' => $validated['campus_id'],
                     'is_active' => true,
@@ -369,8 +372,6 @@ class PatientController extends Controller
         ]);
 
         $query = $validated['q'];
-
-        // 🚨 Fix #22: Escape % and _ wildcards
         $escaped = addcslashes($query, '%_\\');
 
         $patients = Patient::query()
@@ -386,6 +387,18 @@ class PatientController extends Controller
             ->limit(10)
             ->get();
 
-        return response()->json($patients);
+        // 🚨 Map the results to explicitly provide the full name
+        $mappedPatients = $patients->map(function ($patient) {
+            return [
+                'id' => $patient->id,
+                'patient_number' => $patient->patient_number,
+                'first_name' => $patient->user?->first_name ?? 'Unknown',
+                'last_name' => $patient->user?->last_name ?? 'Patient',
+                'email' => $patient->user?->email,
+                'user' => $patient->user, 
+            ];
+        });
+
+        return response()->json($mappedPatients);
     }
 }

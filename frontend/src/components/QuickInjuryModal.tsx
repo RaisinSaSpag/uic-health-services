@@ -4,6 +4,8 @@ import { api } from '../lib/api';
 import { notifyError, notifySuccess } from '../lib/alerts';
 import { getErrorMessage } from '../lib/http';
 import { userDisplayName } from '../lib/format';
+import { useAuth } from '../context/AuthContext';
+import type { Campus } from '../types/hsms';
 
 interface QuickInjuryModalProps {
   isOpen: boolean;
@@ -12,18 +14,35 @@ interface QuickInjuryModalProps {
 }
 
 export function QuickInjuryModal({ isOpen, onClose, onSuccess }: QuickInjuryModalProps) {
+  const { user } = useAuth();
   const [injurySearchTerm, setInjurySearchTerm] = useState('');
   const [injurySearchResults, setInjurySearchResults] = useState<any[]>([]);
-  // 🚨 P4-13 FIX: Removed unused injurySearching state
   const [selectedPatient, setSelectedPatient] = useState<any | null>(null);
   const [injurySubmitting, setInjurySubmitting] = useState(false);
+  const [campuses, setCampuses] = useState<Campus[]>([]);
+  
   const [injuryForm, setInjuryForm] = useState({
     first_name: '',
     last_name: '',
     patient_category: 'college',
-    campus_id: 1,
+    campus_id: user?.campus_id ?? 0,
     chief_complaint: '',
   });
+
+  // Fetch campuses when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      const fetchCampuses = async () => {
+        try {
+          const res = await api.get<Campus[]>('/campuses');
+          setCampuses(res.data);
+        } catch (err) {
+          // ignore
+        }
+      };
+      void fetchCampuses();
+    }
+  }, [isOpen]);
 
   // Reset state when modal opens
   useEffect(() => {
@@ -31,9 +50,15 @@ export function QuickInjuryModal({ isOpen, onClose, onSuccess }: QuickInjuryModa
       setInjurySearchTerm('');
       setInjurySearchResults([]);
       setSelectedPatient(null);
-      setInjuryForm({ first_name: '', last_name: '', patient_category: 'college', campus_id: 1, chief_complaint: '' });
+      setInjuryForm({ 
+        first_name: '', 
+        last_name: '', 
+        patient_category: 'college', 
+        campus_id: user?.campus_id ?? 0,
+        chief_complaint: '' 
+      });
     }
-  }, [isOpen]);
+  }, [isOpen, user?.campus_id]);
 
   // Search handler
   useEffect(() => {
@@ -109,7 +134,6 @@ export function QuickInjuryModal({ isOpen, onClose, onSuccess }: QuickInjuryModa
                 <div 
                   key={p.id} 
                   onClick={() => { setSelectedPatient(p); setInjurySearchResults([]); }}
-                  // 🚨 P4-13 FIX: Removed invalid hover property
                   style={{ padding: '0.75rem', borderBottom: '1px solid #f1f5f9', cursor: 'pointer' }}
                 >
                   <strong>{p.first_name} {p.last_name}</strong> <span className="muted">({p.patient_number})</span>
@@ -142,8 +166,19 @@ export function QuickInjuryModal({ isOpen, onClose, onSuccess }: QuickInjuryModa
                   </select>
                 </label>
                 <label className="field" style={{ flex: 1 }}>
-                  <span>Campus ID</span>
-                  <input type="number" required value={injuryForm.campus_id} onChange={(e) => setInjuryForm({ ...injuryForm, campus_id: Number(e.target.value) })} />
+                  <span>Clinic / Campus</span>
+                  <select 
+                    required 
+                    value={injuryForm.campus_id || ''} 
+                    onChange={(e) => setInjuryForm({ ...injuryForm, campus_id: Number(e.target.value) })}
+                  >
+                    <option value="">Select Campus...</option>
+                    {campuses.map((campus) => (
+                      <option key={campus.id} value={campus.id}>
+                        {campus.name}
+                      </option>
+                    ))}
+                  </select>
                 </label>
               </div>
             </>
