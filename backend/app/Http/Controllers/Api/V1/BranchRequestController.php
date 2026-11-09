@@ -18,7 +18,7 @@ class BranchRequestController extends Controller
     public function index(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'campus_id' => ['required', 'integer', 'exists:campuses,id'], // 🚨 #30
+            'campus_id' => ['required', 'integer', 'exists:campuses,id'],
         ]);
 
         $requests = $this->branchRequestService->listForCampus((int) $validated['campus_id']);
@@ -28,7 +28,6 @@ class BranchRequestController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        // 🚨 #30: FK IDs must exist, not just be positive integers
         $validated = $request->validate([
             'from_campus_id' => ['required', 'integer', 'exists:campuses,id'],
             'to_campus_id' => ['required', 'integer', 'exists:campuses,id', 'different:from_campus_id'],
@@ -85,10 +84,41 @@ class BranchRequestController extends Controller
         }
     }
 
-    public function complete(Request $request, BranchRequest $branchRequest): JsonResponse
+    /**
+     * 🚨 STEP 1: Supplying campus ships the medicine (deducts their stock)
+     */
+    public function ship(Request $request, BranchRequest $branchRequest): JsonResponse
     {
         try {
-            $updated = $this->branchRequestService->complete($branchRequest->id, $request->user()->id);
+            $updated = $this->branchRequestService->ship($branchRequest->id, $request->user()->id);
+
+            return response()->json($updated->load(['medicine', 'fromCampus', 'toCampus']));
+        } catch (RuntimeException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 409);
+        }
+    }
+
+    /**
+     * 🚨 STEP 2: Requesting campus confirms arrival (no stock added yet)
+     */
+    public function receive(Request $request, BranchRequest $branchRequest): JsonResponse
+    {
+        try {
+            $updated = $this->branchRequestService->receive($branchRequest->id, $request->user()->id);
+
+            return response()->json($updated->load(['medicine', 'fromCampus', 'toCampus']));
+        } catch (RuntimeException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 409);
+        }
+    }
+
+    /**
+     * 🚨 STEP 3: Requesting campus marks it as stocked in (finalizes the request)
+     */
+    public function markStockedIn(Request $request, BranchRequest $branchRequest): JsonResponse
+    {
+        try {
+            $updated = $this->branchRequestService->markStockedIn($branchRequest->id, $request->user()->id);
 
             return response()->json($updated->load(['medicine', 'fromCampus', 'toCampus']));
         } catch (RuntimeException $exception) {

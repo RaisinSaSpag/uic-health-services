@@ -151,51 +151,39 @@ class BranchRequestService
         });
     }
 
-    public function complete(int $requestId, int $actorId): BranchRequest
+    /**
+     * 🚨 STEP 1: Supplying campus physically ships the medicine (deducts their stock)
+     */
+    public function ship(int $requestId, int $actorId): BranchRequest
     {
         return DB::transaction(function () use ($requestId, $actorId) {
             $actor = $this->loadActor($actorId);
             $request = BranchRequest::lockForUpdate()->find($requestId);
 
-            if (!$request) {
-                throw new RuntimeException('Branch request not found.');
-            }
-
-            if ($request->status !== 'approved') {
-                throw new RuntimeException('Only approved requests can be completed.');
-            }
+            if (!$request) throw new RuntimeException('Branch request not found.');
+            if ($request->status !== 'approved') throw new RuntimeException('Only approved requests can be shipped.');
 
             $actorRole = strtolower((string) $actor->role?->name);
             if ($actorRole !== 'coordinator' && (int) $actor->campus_id !== (int) $request->to_campus_id) {
-                throw new RuntimeException('Only the supplying campus (or a coordinator) can complete this request.');
+                throw new RuntimeException('Only the supplying campus can ship this request.');
             }
 
-            // 1. Check if the supplying campus has enough stock
             $availableStock = $this->inventoryService->availableStockForCampus($request->to_campus_id)
                 ->where('medicine_id', $request->medicine_id)
                 ->sum('available_quantity');
 
             if ($availableStock < $request->quantity_requested) {
-                throw new RuntimeException(
-                    "Insufficient stock at supplying campus. Available: {$availableStock}, Requested: {$request->quantity_requested}"
-                );
+                throw new RuntimeException("Insufficient stock to ship. Available: {$availableStock}, Requested: {$request->quantity_requested}");
             }
 
-            // 2. Dispense the stock from the supplying campus (FIFO by expiry)
             $remainingToDeduct = $request->quantity_requested;
             $supplyBatches = $this->inventoryService->availableStockForCampus($request->to_campus_id)
                 ->where('medicine_id', $request->medicine_id)
                 ->sortBy('expiration_date');
 
-            $transferPlan = [];
-
             foreach ($supplyBatches as $batch) {
                 if ($remainingToDeduct <= 0) break;
-
-                // 🚨 P2-9 FIX: Skip batches with no expiration date (stockIn requires one)
-                if (empty($batch->expiration_date)) {
-                    continue;
-                }
+                if (empty($batch->expiration_date)) continue;
 
                 $deductAmount = min($remainingToDeduct, $batch->available_quantity);
                 if ($deductAmount > 0) {
@@ -203,38 +191,65 @@ class BranchRequestService
                         'stock_in_id' => $batch->id,
                         'quantity_dispensed' => $deductAmount,
                     ], $actorId);
-
-                    $transferPlan[] = [
-                        'expiration_date' => $batch->expiration_date,
-                        'quantity' => $deductAmount,
-                    ];
-
                     $remainingToDeduct -= $deductAmount;
                 }
             }
 
-            // 🚨 P2-9 FIX: If we couldn't source enough (null-expiration batches), fail cleanly
             if ($remainingToDeduct > 0) {
-                throw new RuntimeException(
-                    'Cannot complete transfer: some stock batches have no expiration date and cannot be transferred. ' .
-                    'Contact IT to fix the source data.'
-                );
+                throw new RuntimeException('Cannot ship transfer: some stock batches have no expiration date.');
             }
 
-            // 3. Create receiving batches that preserve each source batch's expiration
-            foreach ($transferPlan as $transfer) {
-                $this->inventoryService->stockIn([
-                    'medicine_id' => $request->medicine_id,
-                    'campus_id' => $request->from_campus_id,
-                    'quantity' => $transfer['quantity'],
-                    'date_received' => now()->format('Y-m-d'),
-                    'expiration_date' => $transfer['expiration_date'],
-                ], $actorId);
+            // 🚨 Notice: We do NOT call stockIn() here. The medicine is "in transit".
+            $request->update(['status' => 'shipped']);
+            $this->auditLogService->record($actorId, 'branch_request.shipped', 'branch_request', $request->id);
+
+            return $request->fresh();
+        });
+    }
+
+    /**
+     * 🚨 STEP 2: Requesting campus physically receives it (no stock added yet)
+     */
+    public function receive(int $requestId, int $actorId): BranchRequest
+    {
+        return DB::transaction(function () use ($requestId, $actorId) {
+            $actor = $this->loadActor($actorId);
+            $request = BranchRequest::lockForUpdate()->find($requestId);
+
+            if (!$request) throw new RuntimeException('Branch request not found.');
+            if ($request->status !== 'shipped') throw new RuntimeException('Only shipped requests can be marked as received.');
+
+            $actorRole = strtolower((string) $actor->role?->name);
+            if ($actorRole !== 'coordinator' && (int) $actor->campus_id !== (int) $request->from_campus_id) {
+                throw new RuntimeException('Only the requesting campus can confirm receipt.');
             }
 
-            // 4. Update the request status
+            $request->update(['status' => 'received']);
+            $this->auditLogService->record($actorId, 'branch_request.received', 'branch_request', $request->id);
+
+            return $request->fresh();
+        });
+    }
+
+    /**
+     * 🚨 STEP 3: Requesting campus manually stocks in the medicine (finalizes the request)
+     */
+    public function markStockedIn(int $requestId, int $actorId): BranchRequest
+    {
+        return DB::transaction(function () use ($requestId, $actorId) {
+            $actor = $this->loadActor($actorId);
+            $request = BranchRequest::lockForUpdate()->find($requestId);
+
+            if (!$request) throw new RuntimeException('Branch request not found.');
+            if ($request->status !== 'received') throw new RuntimeException('Only received requests can be marked as stocked in.');
+
+            $actorRole = strtolower((string) $actor->role?->name);
+            if ($actorRole !== 'coordinator' && (int) $actor->campus_id !== (int) $request->from_campus_id) {
+                throw new RuntimeException('Only the requesting campus can stock in this medicine.');
+            }
+
             $request->update(['status' => 'completed']);
-            $this->auditLogService->record($actorId, 'branch_request.completed', 'branch_request', $request->id);
+            $this->auditLogService->record($actorId, 'branch_request.stocked_in', 'branch_request', $request->id);
 
             return $request->fresh();
         });

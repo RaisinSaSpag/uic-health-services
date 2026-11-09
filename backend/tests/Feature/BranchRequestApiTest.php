@@ -227,21 +227,22 @@ class BranchRequestApiTest extends TestCase
     }
 
     // ------------------------------------------------------------
-    // COMPLETE
+    // SHIP / RECEIVE / STOCK-IN
     // ------------------------------------------------------------
 
-    public function test_nurse_can_complete_approved_request(): void
+    public function test_nurse_can_ship_approved_request(): void
     {
         $supplyingCampus = Campus::query()->first();
         $requestingCampus = Campus::query()->skip(1)->first();
 
-        $completerNurse = $this->createUserWithRole('nurse');
-        $completerNurse->update(['campus_id' => $supplyingCampus->id]);
+        $shippingNurse = $this->createUserWithRole('nurse');
+        $shippingNurse->update(['campus_id' => $supplyingCampus->id]);
 
         $branchRequest = BranchRequest::factory()->create([
             'status' => 'approved',
             'from_campus_id' => $requestingCampus->id,
             'to_campus_id' => $supplyingCampus->id,
+            'quantity_requested' => 10,
         ]);
 
         \App\Models\MedicineStockIn::create([
@@ -250,22 +251,22 @@ class BranchRequestApiTest extends TestCase
             'quantity' => 100,
             'date_received' => now()->subDays(5),
             'expiration_date' => now()->addYear(),
-            'received_by' => $completerNurse->id,
+            'received_by' => $shippingNurse->id,
         ]);
 
-        $response = $this->asUser($completerNurse)->patchJson(
-            "/api/v1/branch-requests/{$branchRequest->id}/complete"
+        $response = $this->asUser($shippingNurse)->patchJson(
+            "/api/v1/branch-requests/{$branchRequest->id}/ship"
         );
 
-        $response->assertOk()->assertJsonPath('status', 'completed');
+        $response->assertOk()->assertJsonPath('status', 'shipped');
 
         $this->assertDatabaseHas('branch_requests', [
             'id' => $branchRequest->id,
-            'status' => 'completed',
+            'status' => 'shipped',
         ]);
     }
 
-    public function test_nurse_cannot_complete_request_from_another_campus(): void
+    public function test_nurse_cannot_ship_request_from_another_campus(): void
     {
         $supplyingCampus = Campus::query()->first();
         $requestingCampus = Campus::query()->skip(1)->first();
@@ -279,33 +280,50 @@ class BranchRequestApiTest extends TestCase
             'to_campus_id' => $supplyingCampus->id,
         ]);
 
-        \App\Models\MedicineStockIn::create([
-            'medicine_id' => $branchRequest->medicine_id,
-            'campus_id' => $branchRequest->to_campus_id,
-            'quantity' => 100,
-            'date_received' => now()->subDays(5),
-            'expiration_date' => now()->addYear(),
-            'received_by' => $wrongNurse->id,
-        ]);
-
         $response = $this->asUser($wrongNurse)->patchJson(
-            "/api/v1/branch-requests/{$branchRequest->id}/complete"
+            "/api/v1/branch-requests/{$branchRequest->id}/ship"
         );
 
         $response->assertStatus(409)
-            ->assertJsonFragment(['message' => 'Only the supplying campus (or a coordinator) can complete this request.']);
+            ->assertJsonFragment(['message' => 'Only the supplying campus can ship this request.']);
     }
 
-    public function test_complete_fails_if_not_approved(): void
+    public function test_ship_fails_if_not_approved(): void
     {
         $nurse = $this->createUserWithRole('nurse');
         $branchRequest = BranchRequest::factory()->create(['status' => 'pending']);
 
         $response = $this->asUser($nurse)->patchJson(
-            "/api/v1/branch-requests/{$branchRequest->id}/complete"
+            "/api/v1/branch-requests/{$branchRequest->id}/ship"
         );
 
         $response->assertStatus(409);
+    }
+
+    public function test_nurse_can_receive_shipped_request(): void
+    {
+        $supplyingCampus = Campus::query()->first();
+        $requestingCampus = Campus::query()->skip(1)->first();
+
+        $receivingNurse = $this->createUserWithRole('nurse');
+        $receivingNurse->update(['campus_id' => $requestingCampus->id]);
+
+        $branchRequest = BranchRequest::factory()->create([
+            'status' => 'shipped',
+            'from_campus_id' => $requestingCampus->id,
+            'to_campus_id' => $supplyingCampus->id,
+        ]);
+
+        $response = $this->asUser($receivingNurse)->patchJson(
+            "/api/v1/branch-requests/{$branchRequest->id}/receive"
+        );
+
+        $response->assertOk()->assertJsonPath('status', 'received');
+
+        $this->assertDatabaseHas('branch_requests', [
+            'id' => $branchRequest->id,
+            'status' => 'received',
+        ]);
     }
 
     // ------------------------------------------------------------

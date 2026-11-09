@@ -131,12 +131,10 @@ export function NurseInventoryStocksPage() {
 
   const [isDispenseOpen, setDispenseOpen] = useState(false);
   const [dispenseMedicine, setDispenseMedicine] = useState<Medicine | null>(null);
-  // 🚨 P4-14 FIX: Removed dead state variables, replaced with static empty arrays
   const dispenseBatches: DispenseBatch[] = [];
 
   const [isArchiveOpen, setArchiveOpen] = useState(false);
   const [archiveMedicine, setArchiveMedicine] = useState<Medicine | null>(null);
-  // 🚨 P4-14 FIX: Removed dead state variables, replaced with static empty arrays
   const archiveBatches: ArchiveBatch[] = [];
 
   const [isArchivedOpen, setArchivedOpen] = useState(false);
@@ -194,6 +192,26 @@ export function NurseInventoryStocksPage() {
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  // 🚨 Handle incoming branch request redirect
+  useEffect(() => {
+    const redirectMedicineId = searchParams.get('stock_in_medicine_id');
+    const requestId = searchParams.get('request_id');
+    
+    if (redirectMedicineId && requestId) {
+      const med = medicines.find(m => m.id === Number(redirectMedicineId));
+      if (med) {
+        setStockInMedicine(med);
+        setStockInOpen(true);
+        // Set date to today's local date
+        const today = new Date();
+        const yyyy = today.getFullYear();
+        const mm = String(today.getMonth() + 1).padStart(2, '0');
+        const dd = String(today.getDate()).padStart(2, '0');
+        setStockInDateReceived(`${yyyy}-${mm}-${dd}`);
+      }
+    }
+  }, [medicines, searchParams]);
 
   const filteredMedicines = useMemo(() => {
     const normalized = search.trim().toLowerCase();
@@ -272,9 +290,22 @@ export function NurseInventoryStocksPage() {
         date_received: stockInDateReceived,
         expiration_date: stockInExpirationDate,
       });
+
+      // 🚨 If we came from a branch request, mark it as stocked in
+      const requestId = searchParams.get('request_id');
+      if (requestId) {
+        await api.patch(`/branch-requests/${requestId}/mark-stocked-in`);
+      }
+
       void notifySuccess(`Added ${quantity} units.`, 'Stock Added');
       setStockInOpen(false);
-      await loadData();
+      
+      // Clear the URL params if we came from a branch request
+      if (requestId) {
+        navigate(`${basePath}/requests`, { replace: true });
+      } else {
+        await loadData();
+      }
     } catch (err) {
       void notifyError(getErrorMessage(err, 'Unable to add stock.'), 'Stock-In Failed');
     } finally {

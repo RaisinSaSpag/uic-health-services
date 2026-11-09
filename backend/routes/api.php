@@ -24,7 +24,6 @@ Route::prefix('v1')->group(function (): void {
 
     Route::prefix('auth')->group(function (): void {
         // Staff login (Nurse, Doctor, Coordinator)
-        // 🚨 P1-8 FIX: Tightened from 100/min to 10/min for brute-force protection
         Route::post('/staff/login', [AuthController::class, 'staffLogin'])->middleware('throttle:10,1');
 
         // Student/Employee login
@@ -171,7 +170,11 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/branch-requests', [BranchRequestController::class, 'store']);
             Route::patch('/branch-requests/{branchRequest}/approve', [BranchRequestController::class, 'approve']);
             Route::patch('/branch-requests/{branchRequest}/reject', [BranchRequestController::class, 'reject']);
-            Route::patch('/branch-requests/{branchRequest}/complete', [BranchRequestController::class, 'complete']);
+            
+            // 🚨 NEW: Chain of Custody (Ship → Receive → Stock-In)
+            Route::patch('/branch-requests/{branchRequest}/ship', [BranchRequestController::class, 'ship']);
+            Route::patch('/branch-requests/{branchRequest}/receive', [BranchRequestController::class, 'receive']);
+            Route::patch('/branch-requests/{branchRequest}/mark-stocked-in', [BranchRequestController::class, 'markStockedIn']);
         });
 
         // ============================================================
