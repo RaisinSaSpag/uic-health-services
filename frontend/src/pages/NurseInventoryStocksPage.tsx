@@ -131,11 +131,11 @@ export function NurseInventoryStocksPage() {
 
   const [isDispenseOpen, setDispenseOpen] = useState(false);
   const [dispenseMedicine, setDispenseMedicine] = useState<Medicine | null>(null);
-  const dispenseBatches: DispenseBatch[] = [];
+  const [dispenseBatches, setDispenseBatches] = useState<DispenseBatch[]>([]);
 
   const [isArchiveOpen, setArchiveOpen] = useState(false);
   const [archiveMedicine, setArchiveMedicine] = useState<Medicine | null>(null);
-  const archiveBatches: ArchiveBatch[] = [];
+  const [archiveBatches, setArchiveBatches] = useState<ArchiveBatch[]>([]);
 
   const [isArchivedOpen, setArchivedOpen] = useState(false);
 
@@ -203,7 +203,6 @@ export function NurseInventoryStocksPage() {
       if (med) {
         setStockInMedicine(med);
         setStockInOpen(true);
-        // Set date to today's local date
         const today = new Date();
         const yyyy = today.getFullYear();
         const mm = String(today.getMonth() + 1).padStart(2, '0');
@@ -300,7 +299,6 @@ export function NurseInventoryStocksPage() {
       void notifySuccess(`Added ${quantity} units.`, 'Stock Added');
       setStockInOpen(false);
       
-      // Clear the URL params if we came from a branch request
       if (requestId) {
         navigate(`${basePath}/requests`, { replace: true });
       } else {
@@ -310,6 +308,56 @@ export function NurseInventoryStocksPage() {
       void notifyError(getErrorMessage(err, 'Unable to add stock.'), 'Stock-In Failed');
     } finally {
       setStockInSubmitting(false);
+    }
+  };
+
+  // 🚨 Fetch batches for Dispense
+  const openDispenseModal = async (medicine: Medicine) => {
+    setDispenseMedicine(medicine);
+    setDispenseOpen(true);
+    setDispenseBatches([]);
+    
+    try {
+      const res = await api.get<AvailableStockItem[]>('/inventory/available', {
+        params: { campus_id: selectedCampusId }
+      });
+      const medBatches = res.data
+        .filter(item => item.medicine_id === medicine.id)
+        .map(item => ({
+          stock_in_id: item.id,
+          date_received: item.date_received,
+          expiration_date: item.expiration_date,
+          quantity: item.available_quantity ?? item.quantity ?? 0
+        }));
+      setDispenseBatches(medBatches as any);
+    } catch (err) {
+      void notifyError('Failed to load stock batches.', 'Error');
+    }
+  };
+
+  // 🚨 Fetch batches for Archive
+  const openArchiveModal = async (medicine: Medicine) => {
+    setArchiveMedicine(medicine);
+    setArchiveOpen(true);
+    setArchiveBatches([]);
+
+    try {
+      const res = await api.get<AvailableStockItem[]>('/inventory/available', {
+        params: { campus_id: selectedCampusId }
+      });
+
+      const medBatches = res.data
+        .filter(item => item.medicine_id === medicine.id)
+        .map(item => ({
+          medicine_stock_in_id: item.id,
+          date_received: item.date_received,
+          expiration_date: item.expiration_date,
+          quantity: item.available_quantity ?? item.quantity ?? 0
+        }));
+
+      setArchiveBatches(medBatches);
+    } catch (err) {
+      void notifyError('Failed to load stock batches.', 'Error');
     }
   };
 
@@ -480,10 +528,10 @@ export function NurseInventoryStocksPage() {
                                   <button className="button ghost sm" onClick={() => { setStockInMedicine(medicine); setStockInQuantity(''); setStockInDateReceived(new Date().toISOString().slice(0, 10)); setStockInExpirationDate(''); setStockInOpen(true); }} title="Stock-In">
                                     <PackagePlus size={16} color="#16a34a" />
                                   </button>
-                                  <button className="button ghost sm" onClick={() => { setDispenseMedicine(medicine); setDispenseOpen(true); }} disabled={stock === 0} title="Dispense">
+                                  <button className="button ghost sm" onClick={() => void openDispenseModal(medicine)} disabled={stock === 0} title="Dispense">
                                     <MinusCircle size={16} color={stock === 0 ? '#cbd5e1' : '#e11d48'} />
                                   </button>
-                                  <button className="button ghost sm" onClick={() => { setArchiveMedicine(medicine); setArchiveOpen(true); }} disabled={stock === 0} title="Archive">
+                                  <button className="button ghost sm" onClick={() => void openArchiveModal(medicine)} disabled={stock === 0} title="Archive">
                                     <Archive size={16} color={stock === 0 ? '#cbd5e1' : '#d97706'} />
                                   </button>
                                 </>

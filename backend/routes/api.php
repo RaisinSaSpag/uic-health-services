@@ -19,15 +19,23 @@ use App\Http\Controllers\Api\V1\UserController;
 use App\Http\Controllers\Api\V1\AcademicTermController;
 use Illuminate\Support\Facades\Route;
 
-Route::prefix('v1')->group(function (): void {
+// 🚨 DYNAMIC RATE LIMITING
+// In local testing, we use 1000/min to allow rapid login/logout and user creation.
+// In production, we drop to 10/min to prevent brute-force attacks.
+$isLocal = app()->environment('local');
+$loginLimit = $isLocal ? 'throttle:1000,1' : 'throttle:10,1';
+$userMgmtLimit = $isLocal ? 'throttle:1000,1' : 'throttle:10,1';
+$userListLimit = $isLocal ? 'throttle:1000,1' : 'throttle:30,1';
+
+Route::prefix('v1')->group(function () use ($loginLimit, $userMgmtLimit, $userListLimit): void {
     Route::get('/health', [HealthController::class, 'index']);
 
-    Route::prefix('auth')->group(function (): void {
+    Route::prefix('auth')->group(function () use ($loginLimit): void {
         // Staff login (Nurse, Doctor, Coordinator)
-        Route::post('/staff/login', [AuthController::class, 'staffLogin'])->middleware('throttle:10,1');
+        Route::post('/staff/login', [AuthController::class, 'staffLogin'])->middleware($loginLimit);
 
         // Student/Employee login
-        Route::post('/student/login', [AuthController::class, 'studentLogin'])->middleware('throttle:10,1');
+        Route::post('/student/login', [AuthController::class, 'studentLogin'])->middleware($loginLimit);
 
         Route::middleware(['jwt', 'throttle:60,1'])->group(function (): void {
             Route::get('/me', [AuthController::class, 'me']);
@@ -36,7 +44,7 @@ Route::prefix('v1')->group(function (): void {
         });
     });
 
-    Route::middleware(['jwt', 'throttle:200,1', 'enforce.password'])->group(function (): void {
+    Route::middleware(['jwt', 'throttle:200,1', 'enforce.password'])->group(function () use ($loginLimit, $userMgmtLimit, $userListLimit): void {
 
         // ============================================================
         // Patient Profile (Self-Service for Students/Employees)
@@ -104,7 +112,7 @@ Route::prefix('v1')->group(function (): void {
         // ============================================================
         // Coordinator - Command Center & Management
         // ============================================================
-        Route::middleware('role:coordinator')->group(function (): void {
+        Route::middleware('role:coordinator')->group(function () use ($userMgmtLimit, $userListLimit): void {
             Route::get('/audit-logs', [AuditLogController::class, 'index']);
             Route::get('/reports/command-center', [ReportController::class, 'clinicCommandCenter']);
             Route::get('/reports/campus-detail/{campusCode}', [ReportController::class, 'campusDetail']);
@@ -114,12 +122,12 @@ Route::prefix('v1')->group(function (): void {
             Route::patch('/academic-terms/{term}/activate', [AcademicTermController::class, 'activate']);
             
             // User Management
-            Route::get('/users', [UserController::class, 'index'])->middleware('throttle:30,1');
-            Route::patch('/users/{user}/role', [UserController::class, 'updateRole'])->whereNumber('user')->middleware('throttle:10,1');
-            Route::post('/users', [UserController::class, 'store'])->middleware('throttle:10,1');
-            Route::patch('/users/{user}', [UserController::class, 'update'])->whereNumber('user')->middleware('throttle:10,1');
-            Route::patch('/users/{user}/password', [UserController::class, 'resetPassword'])->whereNumber('user')->middleware('throttle:10,1');
-            Route::delete('/users/{user}', [UserController::class, 'destroy'])->whereNumber('user')->middleware('throttle:10,1');
+            Route::get('/users', [UserController::class, 'index'])->middleware($userListLimit);
+            Route::patch('/users/{user}/role', [UserController::class, 'updateRole'])->whereNumber('user')->middleware($userMgmtLimit);
+            Route::post('/users', [UserController::class, 'store'])->middleware($userMgmtLimit);
+            Route::patch('/users/{user}', [UserController::class, 'update'])->whereNumber('user')->middleware($userMgmtLimit);
+            Route::patch('/users/{user}/password', [UserController::class, 'resetPassword'])->whereNumber('user')->middleware($userMgmtLimit);
+            Route::delete('/users/{user}', [UserController::class, 'destroy'])->whereNumber('user')->middleware($userMgmtLimit);
         });
 
         // ============================================================

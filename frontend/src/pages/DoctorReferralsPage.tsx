@@ -47,20 +47,21 @@ const referralStatusOptions = [
   { value: 'in_progress', label: 'In Progress' },
 ];
 
+// Alphabetical List
 const diagnosisOptions = [
-  { value: 'Migraine', label: 'Migraine' },
-  { value: 'Tension Headache', label: 'Tension Headache' },
-  { value: 'Viral Infection', label: 'Viral Infection (Common Cold)' },
-  { value: 'Upper Respiratory Tract Infection', label: 'URTI (Flu)' },
-  { value: 'Gastroenteritis', label: 'Gastroenteritis (Stomach ache)' },
-  { value: 'Food Poisoning', label: 'Food Poisoning' },
-  { value: 'Asthma', label: 'Asthma' },
-  { value: 'Hypertension', label: 'Hypertension (High Blood Pressure)' },
   { value: 'Allergic Reaction', label: 'Allergic Reaction' },
-  { value: 'Dysmenorrhea', label: 'Dysmenorrhea (Menstrual Cramps)' },
-  { value: 'Minor Injury', label: 'Minor Injury / Wound' },
+  { value: 'Asthma', label: 'Asthma' },
   { value: 'Dental Pain', label: 'Dental Pain' },
-  { value: 'Other', label: 'Other (Specify in Treatment Plan)' },
+  { value: 'Dysmenorrhea', label: 'Dysmenorrhea (Menstrual Cramps)' },
+  { value: 'Food Poisoning', label: 'Food Poisoning' },
+  { value: 'Gastroenteritis', label: 'Gastroenteritis (Stomach ache)' },
+  { value: 'Hypertension', label: 'Hypertension (High Blood Pressure)' },
+  { value: 'Migraine', label: 'Migraine' },
+  { value: 'Minor Injury', label: 'Minor Injury / Wound' },
+  { value: 'Tension Headache', label: 'Tension Headache' },
+  { value: 'Upper Respiratory Tract Infection', label: 'URTI (Flu)' },
+  { value: 'Viral Infection', label: 'Viral Infection (Common Cold)' },
+  { value: 'Other', label: 'Other (Specify below)' },
 ];
 
 function parseReferralId(value: string | undefined): number | null {
@@ -97,6 +98,7 @@ export function DoctorReferralsPage() {
 
   // Form State
   const [finalDiagnosis, setFinalDiagnosis] = useState('');
+  const [customFinalDiagnosis, setCustomFinalDiagnosis] = useState(''); // 🚨 NEW
   const [treatmentPlan, setTreatmentPlan] = useState('');
   const [doctorRemarks, setDoctorRemarks] = useState('');
   const [prescriptionText, setPrescriptionText] = useState('');
@@ -136,7 +138,22 @@ export function DoctorReferralsPage() {
     try {
       const response = await api.get<Referral>(`/referrals/${routeReferralId}`);
       setDetailReferral(response.data);
-      setFinalDiagnosis(response.data.final_diagnosis ?? '');
+      
+      const diag = response.data.final_diagnosis ?? '';
+      const standardDiagnoses = [
+        'Allergic Reaction', 'Asthma', 'Dental Pain', 'Dysmenorrhea', 
+        'Food Poisoning', 'Gastroenteritis', 'Hypertension', 'Migraine', 
+        'Minor Injury', 'Tension Headache', 'Upper Respiratory Tract Infection', 'Viral Infection'
+      ];
+      
+      if (diag && !standardDiagnoses.includes(diag) && diag !== 'N/A') {
+        setFinalDiagnosis('Other');
+        setCustomFinalDiagnosis(diag);
+      } else {
+        setFinalDiagnosis(diag);
+        setCustomFinalDiagnosis('');
+      }
+
       setTreatmentPlan(response.data.treatment_plan ?? '');
       setDoctorRemarks(response.data.doctor_remarks ?? '');
       setPrescriptionText(response.data.prescription ?? '');
@@ -194,7 +211,6 @@ export function DoctorReferralsPage() {
   };
 
   const addPrescriptionRow = () => {
-    // 🚨 P4-19 FIX: crypto.randomUUID needs a secure context. Fallback for HTTP.
     const id = window.crypto?.randomUUID ? window.crypto.randomUUID() : Math.random().toString(36).substring(2, 15);
     setPrescriptionRows((prev) => [
       ...prev,
@@ -216,6 +232,10 @@ export function DoctorReferralsPage() {
     if (action === 'complete') {
       if (finalDiagnosis.trim() === '') {
         await notifyError('Final Diagnosis is required to complete this referral.', 'Missing Details');
+        return;
+      }
+      if (finalDiagnosis === 'Other' && customFinalDiagnosis.trim() === '') {
+        await notifyError('Please specify the custom final diagnosis.', 'Missing Details');
         return;
       }
       if (treatmentPlan.trim() === '') {
@@ -249,7 +269,7 @@ export function DoctorReferralsPage() {
       try {
         await api.patch(`/referrals/${detailReferral.id}`, {
           action: 'complete',
-          final_diagnosis: finalDiagnosis.trim(),
+          final_diagnosis: finalDiagnosis === 'Other' ? customFinalDiagnosis.trim() : finalDiagnosis.trim(),
           treatment_plan: treatmentPlan.trim(),
           doctor_remarks: doctorRemarks.trim(),
           prescription: prescriptionText.trim() || '',
@@ -282,8 +302,6 @@ export function DoctorReferralsPage() {
       try {
         await api.patch(`/referrals/${detailReferral.id}`, { action: 'in_progress' });
         await notifySuccess(`Referral #${detailReferral.id} updated.`, 'Referral Updated');
-        // 🚨 P4-20 FIX: Do NOT call loadReferralDetail() here.
-        // It would erase whatever the doctor is currently typing.
         setDetailReferral((prev) => prev ? { ...prev, status: 'in_progress' } : null);
       } catch (err) {
         await notifyError(getErrorMessage(err, `Failed to update referral #${detailReferral.id}.`), 'Update Failed');
@@ -516,6 +534,22 @@ export function DoctorReferralsPage() {
                         ))}
                       </select>
                     </label>
+
+                    {/* 🚨 Dedicated input if "Other" is selected */}
+                    {finalDiagnosis === 'Other' && (
+                      <label className="field">
+                        <span>Specify Final Diagnosis *</span>
+                        <input
+                          type="text"
+                          required
+                          value={customFinalDiagnosis}
+                          onChange={(e) => setCustomFinalDiagnosis(e.target.value)}
+                          placeholder="Enter specific diagnosis..."
+                          disabled={isCompleted || saving}
+                        />
+                      </label>
+                    )}
+
                     <label className="field">
                       <span>Treatment Plan *</span>
                       <textarea rows={2} value={treatmentPlan} onChange={(e) => setTreatmentPlan(e.target.value)} placeholder="e.g. Rest and hydration, follow up in 3 days" disabled={isCompleted || saving} />

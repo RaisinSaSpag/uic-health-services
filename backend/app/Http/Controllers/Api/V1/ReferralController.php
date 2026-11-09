@@ -78,18 +78,11 @@ class ReferralController extends Controller
             'doctor_remarks' => ['nullable', 'string', 'max:3000'],
             'prescription' => ['nullable', 'string', 'max:3000'],
             
-            // 🚨 P1-2 FIX: Structured diagnosis categories
+            // 🚨 ALLOW CUSTOM "OTHER" TEXT
             'final_diagnosis' => [
                 'nullable', 
                 'string', 
                 'max:255',
-                Rule::in([
-                    'Migraine', 'Tension Headache', 'Viral Infection',
-                    'Upper Respiratory Tract Infection', 'Gastroenteritis',
-                    'Food Poisoning', 'Asthma', 'Hypertension',
-                    'Allergic Reaction', 'Dysmenorrhea', 'Minor Injury',
-                    'Dental Pain', 'Other',
-                ]),
             ],
             
             'treatment_plan' => ['nullable', 'string', 'max:3000'],

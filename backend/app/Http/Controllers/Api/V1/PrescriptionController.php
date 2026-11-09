@@ -58,8 +58,14 @@ class PrescriptionController extends Controller
     {
         $this->assertCanAccessConsultation($request, (int) $prescription->consultation_id);
 
+        // 🚨 Load the patient's user data so the History Modal can display their name
         return response()->json(
-            $prescription->load(['medicine', 'prescribedBy', 'dispensedBy', 'consultation'])
+            $prescription->load([
+                'medicine', 
+                'prescribedBy', 
+                'dispensedBy', 
+                'consultation.patient.user'
+            ])
         );
     }
 
@@ -93,10 +99,6 @@ class PrescriptionController extends Controller
             return response()->json(['message' => $exception->getMessage()], 422);
         }
     }
-
-    // 🚨 Fix #9: Deleted the legacy `dispense()` method entirely.
-    // The old PATCH /prescriptions/{id}/dispense route was removed in Phase 1.
-    // Keeping the method would allow re-enabling the FIFO bypass in a future commit.
 
     public function cancel(Request $request, Prescription $prescription): JsonResponse
     {

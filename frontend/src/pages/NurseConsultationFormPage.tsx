@@ -23,10 +23,10 @@ interface ConsultationFormState {
   lastMenstrualPeriod: string;
   complaints: string;
   diagnosis: string;
+  customDiagnosis: string; // 🚨 NEW
   remarks: string;
 }
 
-// 🚨 UPDATED HELPERS: Treat blank or "0" as null so the backend accepts it
 const toNullableText = (v: string) => (v.trim() === '' ? null : v.trim());
 const toNullableInteger = (v: string) => {
   if (!v || v.trim() === '' || v === '0') return null;
@@ -39,7 +39,6 @@ const toNullableDecimal = (v: string) => {
   return Number.isNaN(p) ? null : p;
 };
 
-// 🚨 P4-10 FIX: Use local time, not UTC (PH is UTC+8, so toISOString was wrong before 8AM)
 const getToday = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -72,6 +71,7 @@ export function NurseConsultationFormPage() {
     lastMenstrualPeriod: '',
     complaints: '',
     diagnosis: '',
+    customDiagnosis: '',
     remarks: '',
   });
 
@@ -109,12 +109,12 @@ export function NurseConsultationFormPage() {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
-  // 🚨 P4-12 FIX: When switching to "refer to doctor", clear the diagnosis
   const handleReferralToggle = (referred: boolean) => {
     setForm((prev) => ({
       ...prev,
       referredToDoctor: referred,
       diagnosis: referred ? '' : prev.diagnosis,
+      customDiagnosis: referred ? '' : prev.customDiagnosis, // clear custom too
     }));
   };
 
@@ -141,7 +141,8 @@ export function NurseConsultationFormPage() {
         temperature_c: toNullableDecimal(form.temperatureC),
         weight_kg: toNullableDecimal(form.weightKg),
         last_menstrual_period: toNullableText(form.lastMenstrualPeriod),
-        diagnosis: toNullableText(form.diagnosis),
+        // 🚨 Send the custom text if "Other" was selected
+        diagnosis: toNullableText(form.diagnosis === 'Other' ? form.customDiagnosis : form.diagnosis),
         remarks: toNullableText(form.remarks),
         referred_to_doctor: form.referredToDoctor,
         is_telemed: form.referredToDoctor && !!form.telemedLink.trim(),
@@ -152,7 +153,6 @@ export function NurseConsultationFormPage() {
       const consultRes = await api.post('/consultations', payload);
       const consultationId = consultRes.data.id;
 
-      // 🚨 P4-11 FIX: If the referral fails, cancel the consultation so we don't leave an orphan
       if (form.referredToDoctor && form.referralDoctorId) {
         try {
           await api.post('/referrals', {
@@ -161,11 +161,10 @@ export function NurseConsultationFormPage() {
             referral_reason: form.remarks || form.referralNotes || 'Nurse requested doctor assessment.',
           });
         } catch (referralErr) {
-          // Rollback: the consultation was created but the referral failed.
           try {
             await api.patch(`/consultations/${consultationId}`, { action: 'cancel' });
           } catch {
-            // ignore — best effort rollback
+            // ignore
           }
           throw new Error(
             'Consultation was recorded but the referral could not be created. Please try again or contact IT.',
@@ -199,7 +198,6 @@ export function NurseConsultationFormPage() {
     return (
       <div className="page" style={{ maxWidth: 880, margin: '3rem auto', textAlign: 'center' }}>
         <p>Patient not found.</p>
-        {/* 🚨 P4-16 FIX: Link now points to a valid route */}
         <Link to="/nurse/records/student" className="button ghost" style={{ marginTop: '1rem' }}>
           Back to records
         </Link>
@@ -236,7 +234,6 @@ export function NurseConsultationFormPage() {
 
   return (
     <div className="page" style={{ maxWidth: 880, margin: '0 auto', padding: '1.5rem 1rem 3rem' }}>
-      {/* Header */}
       <div style={{ marginBottom: '1.75rem', display: 'flex', alignItems: 'flex-start', gap: '1rem' }}>
         <Link
           to={`/nurse/patients/${patient.id}`}
@@ -275,7 +272,6 @@ export function NurseConsultationFormPage() {
       </div>
 
       <form onSubmit={submitForm}>
-        {/* Vitals & Timing */}
         <div style={sectionCard}>
           <h3 style={sectionTitle}>
             <ClipboardList size={18} strokeWidth={2} color="#a3224a" />
@@ -349,7 +345,6 @@ export function NurseConsultationFormPage() {
           </div>
         </div>
 
-        {/* Clinical Assessment */}
         <div style={sectionCard}>
           <h3 style={sectionTitle}>
             <Stethoscope size={18} strokeWidth={2} color="#a3224a" />
@@ -381,21 +376,36 @@ export function NurseConsultationFormPage() {
                 <option value="">
                   {form.referredToDoctor ? '— Doctor will diagnose —' : '— Select diagnosis —'}
                 </option>
-                <option value="Migraine">Migraine</option>
-                <option value="Tension Headache">Tension Headache</option>
-                <option value="Viral Infection">Viral Infection (Common Cold)</option>
-                <option value="Upper Respiratory Tract Infection">URTI (Flu)</option>
-                <option value="Gastroenteritis">Gastroenteritis (Stomach ache)</option>
-                <option value="Food Poisoning">Food Poisoning</option>
-                <option value="Asthma">Asthma</option>
-                <option value="Hypertension">Hypertension (High Blood Pressure)</option>
                 <option value="Allergic Reaction">Allergic Reaction</option>
-                <option value="Dysmenorrhea">Dysmenorrhea (Menstrual Cramps)</option>
-                <option value="Minor Injury">Minor Injury / Wound</option>
+                <option value="Asthma">Asthma</option>
                 <option value="Dental Pain">Dental Pain</option>
-                <option value="Other">Other (Specify in Remarks)</option>
+                <option value="Dysmenorrhea">Dysmenorrhea (Menstrual Cramps)</option>
+                <option value="Food Poisoning">Food Poisoning</option>
+                <option value="Gastroenteritis">Gastroenteritis (Stomach ache)</option>
+                <option value="Hypertension">Hypertension (High Blood Pressure)</option>
+                <option value="Migraine">Migraine</option>
+                <option value="Minor Injury">Minor Injury / Wound</option>
+                <option value="Tension Headache">Tension Headache</option>
+                <option value="Upper Respiratory Tract Infection">URTI (Flu)</option>
+                <option value="Viral Infection">Viral Infection (Common Cold)</option>
+                <option value="Other">Other (Specify below)</option>
               </select>
             </label>
+
+            {/* 🚨 Dedicated input if "Other" is selected */}
+            {form.diagnosis === 'Other' && (
+              <label className="field">
+                <span>Specify Diagnosis *</span>
+                <input
+                  type="text"
+                  required
+                  value={form.customDiagnosis}
+                  onChange={(e) => handleChange('customDiagnosis', e.target.value)}
+                  placeholder="Enter specific diagnosis..."
+                  disabled={form.referredToDoctor || submitting}
+                />
+              </label>
+            )}
 
             <label className="field">
               <span>
@@ -417,7 +427,6 @@ export function NurseConsultationFormPage() {
           </div>
         </div>
 
-        {/* Consultation Path */}
         <div style={sectionCard}>
           <h3 style={sectionTitle}>
             <UserRound size={18} strokeWidth={2} color="#a3224a" />
@@ -538,7 +547,6 @@ export function NurseConsultationFormPage() {
           )}
         </div>
 
-        {/* Actions */}
         <div
           style={{
             display: 'flex',

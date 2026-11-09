@@ -49,8 +49,6 @@ class ConsultationController extends Controller
         $actorRole = strtolower((string) $request->user()?->role?->name);
         $isStaff = in_array($actorRole, ['nurse', 'coordinator'], true);
 
-        // 🚨 Fix #20: filter_var correctly parses "false", "0", "no" etc.
-        // The old (bool) cast turned the string "false" into true, flipping the validation rules.
         $isReferral = filter_var(
             $request->input('referred_to_doctor'),
             FILTER_VALIDATE_BOOLEAN,
@@ -70,18 +68,12 @@ class ConsultationController extends Controller
             'chief_complaint' => ['required', 'string', 'max:1000'],
             'symptoms' => ['nullable', 'string', 'max:2000'],
 
+            // 🚨 ALLOW CUSTOM "OTHER" TEXT
             'diagnosis' => [
                 Rule::requiredIf($isStaff && ! $isReferral),
                 'nullable',
                 'string',
                 'max:255',
-                Rule::in([
-                    'Migraine', 'Tension Headache', 'Viral Infection',
-                    'Upper Respiratory Tract Infection', 'Gastroenteritis',
-                    'Food Poisoning', 'Asthma', 'Hypertension',
-                    'Allergic Reaction', 'Dysmenorrhea', 'Minor Injury',
-                    'Dental Pain', 'Other',
-                ]),
             ],
 
             'remarks' => [
@@ -129,17 +121,11 @@ class ConsultationController extends Controller
             'referred_to_doctor' => ['nullable', 'boolean'],
             'summary' => ['nullable', 'string', 'max:3000'],
             
+            // 🚨 ALLOW CUSTOM "OTHER" TEXT
             'final_diagnosis' => [
                 'nullable',
                 'string',
                 'max:255',
-                Rule::in([
-                    'Migraine', 'Tension Headache', 'Viral Infection',
-                    'Upper Respiratory Tract Infection', 'Gastroenteritis',
-                    'Food Poisoning', 'Asthma', 'Hypertension',
-                    'Allergic Reaction', 'Dysmenorrhea', 'Minor Injury',
-                    'Dental Pain', 'Other',
-                ]),
             ],
             
             'treatment_plan' => ['nullable', 'string', 'max:3000'],
@@ -159,13 +145,7 @@ class ConsultationController extends Controller
         if ($action === 'complete') {
             $request->validate([
                 'summary' => ['required', 'string', 'max:3000'],
-                'final_diagnosis' => ['required', 'string', 'max:255', Rule::in([
-                    'Migraine', 'Tension Headache', 'Viral Infection',
-                    'Upper Respiratory Tract Infection', 'Gastroenteritis',
-                    'Food Poisoning', 'Asthma', 'Hypertension',
-                    'Allergic Reaction', 'Dysmenorrhea', 'Minor Injury',
-                    'Dental Pain', 'Other',
-                ])],
+                'final_diagnosis' => ['required', 'string', 'max:255'],
                 'treatment_plan' => ['required', 'string', 'max:3000'],
             ]);
         }

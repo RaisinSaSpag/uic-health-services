@@ -28,20 +28,7 @@ export function GradeSchoolForm({
             <textarea rows={2} placeholder="Optional adolescent physical changes..." value={form.special_health_concern} onChange={(e) => setForm({ ...form, special_health_concern: e.target.value })} />
           </label>
           
-          <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '0.75rem', marginTop: '0.5rem' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-              <input type="checkbox" checked={form.self_carry_permit} onChange={(e) => setForm({ ...form, self_carry_permit: e.target.checked })} />
-              <span style={{ fontSize: '0.9rem' }}>Self-Carry Asthma / Inhaler Permit</span>
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-              <input type="checkbox" checked={form.extracurricular_clearance} onChange={(e) => setForm({ ...form, extracurricular_clearance: e.target.checked })} />
-              <span style={{ fontSize: '0.9rem' }}>Interscholastic / Club Clearance</span>
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-              <input type="checkbox" checked={form.counseling_authorization} onChange={(e) => setForm({ ...form, counseling_authorization: e.target.checked })} />
-              <span style={{ fontSize: '0.9rem' }}>Counseling Check-in Consent</span>
-            </label>
-          </div>
+          {/* 🚨 REMOVED: JHS checkboxes (Self-Carry, Interscholastic, Counseling) */}
         </>
       )}
     </div>

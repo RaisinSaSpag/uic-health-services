@@ -5,6 +5,7 @@ import {
   Package,
   RefreshCw,
   Search,
+  X,
   type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -64,14 +65,42 @@ const ACTION_OPTIONS = [
   { value: 'branch_request.completed', label: 'Request Completed' },
   { value: 'prescription.created', label: 'Prescription Created' },
   { value: 'prescription.dispensed', label: 'Prescription Dispensed' },
+  { value: 'prescription.dispensed_fifo', label: 'Prescription Dispensed (FIFO)' },
   { value: 'prescription.cancelled', label: 'Prescription Cancelled' },
 ];
 
 function humanizeAction(action: string): string {
   return action
-    .replace('.', ' Ã¢â‚¬â€ ')
+    .replace('.', ' — ')
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function renderReadableData(data: Record<string, unknown> | null, tone: 'green' | 'red') {
+  if (!data || Object.keys(data).length === 0) return null;
+
+  const bgColor = tone === 'green' ? '#f0fdf4' : '#fef2f2';
+  const borderColor = tone === 'green' ? '#bbf7d0' : '#fecaca';
+  const keyColor = tone === 'green' ? '#166534' : '#991b1b';
+  const valueColor = tone === 'green' ? '#064e3b' : '#7f1d1d';
+
+  return (
+    <div style={{ background: bgColor, padding: '1rem', borderRadius: '8px', border: `1px solid ${borderColor}`, marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+      {Object.entries(data).map(([key, value]) => {
+        const formattedKey = key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+        const displayValue = value === null ? 'None' : String(value);
+
+        return (
+          <div key={key} style={{ display: 'flex', justifyContent: 'space-between', borderBottom: `1px dashed ${borderColor}`, paddingBottom: '0.25rem' }}>
+            <span style={{ fontSize: '0.85rem', color: keyColor, fontWeight: 500 }}>{formattedKey}:</span>
+            <span style={{ fontSize: '0.85rem', color: valueColor, fontWeight: 600, textAlign: 'right', maxWidth: '60%', wordBreak: 'break-word' }}>
+              {displayValue}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 export function NurseInventoryHistoryPage() {
@@ -92,6 +121,11 @@ export function NurseInventoryHistoryPage() {
   const [search, setSearch] = useState('');
   const [actionFilter, setActionFilter] = useState('');
   const [loading, setLoading] = useState(true);
+
+  // 🚨 Modal State
+  const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null);
+  const [transactionDetails, setTransactionDetails] = useState<any | null>(null);
+  const [isFetchingDetails, setIsFetchingDetails] = useState(false);
 
   const userName = useMemo(() => userDisplayName(user), [user]);
   const campusName = useMemo(() => user?.campus ?? 'Campus not assigned', [user]);
@@ -146,6 +180,24 @@ export function NurseInventoryHistoryPage() {
   const onMenuClick = (item: MenuItem): void => {
     if (item.path !== '/nurse/inventory/history') {
       navigate(item.path);
+    }
+  };
+
+  const handleRowClick = async (log: AuditLog) => {
+    setSelectedLog(log);
+    setTransactionDetails(null);
+
+    // If this is a prescription dispense, fetch the patient name
+    if (log.action === 'prescription.dispensed_fifo' || log.action === 'prescription.dispensed') {
+      setIsFetchingDetails(true);
+      try {
+        const res = await api.get(`/prescriptions/${log.entity_id}`);
+        setTransactionDetails(res.data);
+      } catch (err) {
+        console.error("Could not fetch prescription details", err);
+      } finally {
+        setIsFetchingDetails(false);
+      }
     }
   };
 
@@ -250,7 +302,13 @@ export function NurseInventoryHistoryPage() {
                 </thead>
                 <tbody>
                   {filteredLogs.map((log) => (
-                    <tr key={log.id}>
+                    <tr 
+                      key={log.id} 
+                      onClick={() => void handleRowClick(log)}
+                      style={{ cursor: 'pointer', transition: 'background 0.2s' }}
+                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8fafc')}
+                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                    >
                       <td>{formatDateTime(log.created_at)}</td>
                       <td>{humanizeAction(log.action)}</td>
                       <td>{log.entity_type} #{log.entity_id ?? '-'}</td>
@@ -263,6 +321,91 @@ export function NurseInventoryHistoryPage() {
           )}
         </section>
       </div>
+
+      {/* 🚨 Transaction Detail Modal */}
+      {selectedLog && (
+        <div className="modal-backdrop" onClick={() => setSelectedLog(null)}>
+          <div className="modal-panel" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px', width: '100%' }}>
+            <div className="modal-head">
+              <h3>Transaction Details</h3>
+              <button className="button ghost" onClick={() => setSelectedLog(null)}>
+                <X size={18} />
+              </button>
+            </div>
+            
+            <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Action</span>
+                  <p style={{ margin: '0.25rem 0 0 0', fontWeight: 500 }}>{humanizeAction(selectedLog.action)}</p>
+                </div>
+                <div>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Date & Time</span>
+                  <p style={{ margin: '0.25rem 0 0 0' }}>{formatDateTime(selectedLog.created_at)}</p>
+                </div>
+                <div>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Performed By</span>
+                  <p style={{ margin: '0.25rem 0 0 0' }}>{selectedLog.user ? userDisplayName(selectedLog.user) : 'System'}</p>
+                </div>
+                <div>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Entity</span>
+                  <p style={{ margin: '0.25rem 0 0 0', fontFamily: 'monospace', fontSize: '0.85rem' }}>{selectedLog.entity_type} #{selectedLog.entity_id}</p>
+                </div>
+              </div>
+
+              {/* Patient / Prescription Info */}
+              {isFetchingDetails ? (
+                <p className="muted" style={{ fontSize: '0.85rem' }}>Fetching details...</p>
+              ) : transactionDetails ? (
+                <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '8px', border: '1px solid #e2e8f0', marginTop: '0.5rem' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#a3224a', textTransform: 'uppercase' }}>Prescription Details</span>
+                  
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginTop: '0.5rem', fontSize: '0.9rem' }}>
+                    <div>
+                      <span className="muted">Patient:</span>
+                      <div style={{ fontWeight: 600 }}>
+                        {transactionDetails.consultation?.patient?.user?.first_name} {transactionDetails.consultation?.patient?.user?.last_name}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="muted">Medicine:</span>
+                      <div style={{ fontWeight: 600 }}>{transactionDetails.medicine?.name}</div>
+                    </div>
+                    <div>
+                      <span className="muted">Quantity:</span>
+                      <div style={{ fontWeight: 600 }}>{transactionDetails.quantity}</div>
+                    </div>
+                    <div>
+                      <span className="muted">Dosage:</span>
+                      <div style={{ fontWeight: 600 }}>{transactionDetails.dosage_instructions || 'N/A'}</div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              <hr style={{ border: 'none', borderTop: '1px solid #e2e8f0', margin: '0.5rem 0' }} />
+
+              {/* 🚨 READABLE NEW VALUES */}
+              {selectedLog.new_values_json && Object.keys(selectedLog.new_values_json).length > 0 && (
+                <div style={{ marginTop: '0.5rem' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#16a34a', textTransform: 'uppercase' }}>Details</span>
+                  {renderReadableData(selectedLog.new_values_json, 'green')}
+                </div>
+              )}
+
+              {/* 🚨 READABLE OLD VALUES (If applicable) */}
+              {selectedLog.old_values_json && Object.keys(selectedLog.old_values_json).length > 0 && (
+                <div style={{ marginTop: '0.5rem' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#dc2626', textTransform: 'uppercase' }}>Previous Data</span>
+                  {renderReadableData(selectedLog.old_values_json, 'red')}
+                </div>
+              )}
+
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
