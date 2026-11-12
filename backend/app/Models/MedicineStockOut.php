@@ -14,6 +14,7 @@ class MedicineStockOut extends Model
 
     protected $fillable = [
         'stock_in_id',
+        'prescription_id', // 🚨 ADDED FOR AUDIT TRAIL
         'quantity_dispensed',
         'dispensed_by',
         'dispensed_at',
@@ -29,6 +30,11 @@ class MedicineStockOut extends Model
     public function stockIn(): BelongsTo
     {
         return $this->belongsTo(MedicineStockIn::class, 'stock_in_id');
+    }
+
+    public function prescription(): BelongsTo
+    {
+        return $this->belongsTo(Prescription::class, 'prescription_id');
     }
 
     public function dispensedBy(): BelongsTo

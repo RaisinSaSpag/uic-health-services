@@ -117,10 +117,11 @@ class PrescriptionService
                 throw new RuntimeException('No single available stock batch has enough quantity of this medicine at your campus. Mark it as unavailable instead.');
             }
 
+            // 🚨 AUDIT TRAIL FIX: Pass the prescription ID to the inventory dispense
             $this->inventoryService->dispense([
                 'stock_in_id' => $batch->id,
                 'quantity_dispensed' => $prescription->quantity,
-            ], $nurseId);
+            ], $nurseId, $prescription->id);
 
             $prescription->update([
                 'dispensed_by' => $nurseId,

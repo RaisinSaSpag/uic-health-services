@@ -78,7 +78,10 @@ class InventoryService
         });
     }
 
-    public function dispense(array $payload, int $actorId): MedicineStockOut
+    /**
+     * 🚨 AUDIT TRAIL FIX: Accepts an optional $prescriptionId to link the stock-out.
+     */
+    public function dispense(array $payload, int $actorId, ?int $prescriptionId = null): MedicineStockOut
     {
         $stockInId = (int) ($payload['stock_in_id'] ?? 0);
         $quantity = (int) ($payload['quantity_dispensed'] ?? 0);
@@ -91,7 +94,7 @@ class InventoryService
             throw new RuntimeException('Quantity must be greater than zero.');
         }
 
-        return DB::transaction(function () use ($stockInId, $quantity, $actorId) {
+        return DB::transaction(function () use ($stockInId, $quantity, $actorId, $prescriptionId) {
             $stockIn = MedicineStockIn::lockForUpdate()->find($stockInId);
 
             if (!$stockIn) {
@@ -113,6 +116,7 @@ class InventoryService
 
             $stockOut = MedicineStockOut::create([
                 'stock_in_id' => $stockIn->id,
+                'prescription_id' => $prescriptionId, // 🚨 ADDED
                 'quantity_dispensed' => $quantity,
                 'dispensed_by' => $actorId,
                 'dispensed_at' => now(),
@@ -121,6 +125,7 @@ class InventoryService
             $this->auditLogService->record($actorId, 'inventory.dispensed', 'medicine_stock_out', $stockOut->id, [
                 'stock_in_id' => $stockInId,
                 'quantity' => $quantity,
+                'prescription_id' => $prescriptionId,
             ]);
 
             return $stockOut;
