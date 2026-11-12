@@ -30,5 +30,22 @@ export const StatusBadge = memo(function StatusBadge({ status }: StatusBadgeProp
   const safeStatus = status ?? 'unknown';
   const tone = statusToneMap[safeStatus] ?? 'neutral';
 
-  return <span className={`status-badge ${tone}`}>{humanizeStatus(safeStatus)}</span>;
+  return (
+    <span 
+      className={`status-badge ${tone}`} 
+      style={{ 
+        whiteSpace: 'nowrap', 
+        display: 'inline-flex', 
+        alignItems: 'center',
+        justifyContent: 'center',
+        minWidth: '120px', // 🚨 Forces minimum width to prevent overlap
+        padding: '4px 8px',
+        borderRadius: '4px',
+        fontSize: '0.75rem',
+        fontWeight: 600,
+      }}
+    >
+      {humanizeStatus(safeStatus)}
+    </span>
+  );
 });

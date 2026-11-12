@@ -155,16 +155,20 @@ Route::prefix('v1')->group(function () use ($loginLimit, $userMgmtLimit, $userLi
         // ============================================================
         // Inventory Management
         // ============================================================
-        Route::middleware('role:nurse,coordinator')->group(function (): void {
+        
+        // 🚨 READ routes (Nurses, Coordinators, AND Doctors)
+        Route::middleware('role:nurse,coordinator,doctor')->group(function (): void {
             Route::get('/inventory/available', [InventoryController::class, 'available']);
             Route::get('/inventory/low-stock', [InventoryController::class, 'lowStock']);
             Route::get('/inventory/expiring-soon', [InventoryController::class, 'expiringSoon']);
+            Route::get('/inventory/archived', [InventoryController::class, 'archived']);
+        });
 
+        // 🚨 WRITE routes (Nurses, Coordinators only)
+        Route::middleware('role:nurse,coordinator')->group(function (): void {
             Route::post('/inventory/stock-in', [InventoryController::class, 'stockIn']);
             Route::post('/inventory/dispense', [InventoryController::class, 'dispense']);
             Route::post('/inventory/archive', [InventoryController::class, 'archive']);
-
-            Route::get('/inventory/archived', [InventoryController::class, 'archived']);
             Route::post('/inventory/archived/{id}/restore', [InventoryController::class, 'restoreArchived'])->whereNumber('id');
             Route::delete('/inventory/archived/{id}', [InventoryController::class, 'deleteArchived'])->whereNumber('id');
         });

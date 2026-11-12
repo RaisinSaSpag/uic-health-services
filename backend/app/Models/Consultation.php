@@ -13,7 +13,7 @@ class Consultation extends Model
 
     protected $fillable = [
         'patient_id',
-        'patient_enrollment_id', // <-- ADDED
+        'patient_enrollment_id',
         'nurse_id',
         'consultation_type',
         'status',
@@ -21,6 +21,7 @@ class Consultation extends Model
         'symptoms',
         'diagnosis',
         'remarks',
+        'treatment_plan', // <-- ADDED
         'triage_notes',
         'blood_pressure',
         'pulse_bpm',

@@ -33,7 +33,6 @@ export function FinalizeConsultationModal({ isOpen, onClose, consultation, onSuc
     const loadPrescriptions = async () => {
       setLoadingRx(true);
       try {
-        // 🚨 P4-2 FIX: Backend endpoint is /prescriptions?consultation_id=X
         const res = await api.get<PrescriptionRecord[]>('/prescriptions', {
           params: { consultation_id: consultation.id },
         });
@@ -90,7 +89,6 @@ export function FinalizeConsultationModal({ isOpen, onClose, consultation, onSuc
 
     setLoading(true);
     try {
-      // 🚨 P4-3 FIX: Laravel serializes to medical_record (snake_case)
       const medicalRecord = (consultation as any).medical_record;
       
       await api.patch(`/consultations/${consultation.id}`, {
@@ -113,8 +111,8 @@ export function FinalizeConsultationModal({ isOpen, onClose, consultation, onSuc
     }
   };
 
-  // 🚨 P4-3 FIX: Use snake_case for reading from Laravel
   const medicalRecord = (consultation as any).medical_record;
+  const prescriptionText = medicalRecord?.prescription || consultation.referral?.prescription || '';
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -134,52 +132,64 @@ export function FinalizeConsultationModal({ isOpen, onClose, consultation, onSuc
               <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Final Diagnosis</span>
               <p style={{ margin: '0.25rem 0 0 0', fontWeight: 500 }}>{medicalRecord?.final_diagnosis || 'N/A'}</p>
             </div>
-            <div style={{ marginBottom: '0.75rem' }}>
+            <div>
               <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Treatment Plan</span>
               <p style={{ margin: '0.25rem 0 0 0' }}>{medicalRecord?.treatment_plan || 'N/A'}</p>
             </div>
-            <div>
-              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Free-Text Prescription</span>
-              <p style={{ margin: '0.25rem 0 0 0', whiteSpace: 'pre-wrap' }}>{medicalRecord?.prescription || 'None'}</p>
-            </div>
           </div>
 
-          {/* Pending Prescriptions Section */}
+          {/* Unified Prescriptions Section */}
           <div style={{ background: '#f0fdf4', padding: '1rem', borderRadius: '8px', border: '1px solid #bbf7d0' }}>
             <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#166534', textTransform: 'uppercase', display: 'block', marginBottom: '0.5rem' }}>
-              Prescribed Medicines (from Catalog)
+              Prescribed Medicines
             </span>
 
             {loadingRx ? (
               <p className="muted small" style={{ margin: 0 }}>Loading prescriptions...</p>
-            ) : prescriptions.length === 0 ? (
-              <p className="muted small" style={{ margin: 0 }}>No catalog medicines prescribed.</p>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                {prescriptions.map((rx) => (
-                  <div key={rx.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#fff', padding: '0.75rem', borderRadius: '6px', border: '1px solid #d1fae5' }}>
-                    <div>
-                      <div style={{ fontWeight: 600 }}>{rx.medicine?.name || 'Unknown Medicine'}</div>
-                      <div className="muted small" style={{ fontSize: '0.8rem' }}>
-                        Qty: {rx.quantity} · {rx.dosage_instructions || 'No dosage specified'}
+              <>
+                {/* Display structured catalog meds if any */}
+                {prescriptions.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: prescriptionText ? '1rem' : 0 }}>
+                    {prescriptions.map((rx) => (
+                      <div key={rx.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#fff', padding: '0.75rem', borderRadius: '6px', border: '1px solid #d1fae5' }}>
+                        <div>
+                          <div style={{ fontWeight: 600 }}>{rx.medicine?.name || 'Unknown Medicine'}</div>
+                          <div className="muted small" style={{ fontSize: '0.8rem' }}>
+                            Qty: {rx.quantity} · {rx.dosage_instructions || 'No dosage specified'}
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: rx.status === 'dispensed' ? '#059669' : rx.status === 'unavailable' ? '#b45309' : '#64748b', fontWeight: 600, marginTop: 4, textTransform: 'uppercase' }}>
+                            {rx.status}
+                          </div>
+                        </div>
+                        {rx.status === 'pending' && (
+                          <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            <button type="button" className="button success" onClick={() => handleDispense(rx.id)} style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem', background: '#059669', borderColor: '#059669' }}>
+                              Dispense (FIFO)
+                            </button>
+                            <button type="button" className="button ghost" onClick={() => handleMarkUnavailable(rx.id)} style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem', color: '#b45309', borderColor: '#fde68a' }}>
+                              Mark Unavailable
+                            </button>
+                          </div>
+                        )}
                       </div>
-                      <div style={{ fontSize: '0.75rem', color: rx.status === 'dispensed' ? '#059669' : rx.status === 'unavailable' ? '#b45309' : '#64748b', fontWeight: 600, marginTop: 4, textTransform: 'uppercase' }}>
-                        {rx.status}
-                      </div>
-                    </div>
-                    {rx.status === 'pending' && (
-                      <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <button type="button" className="button success" onClick={() => handleDispense(rx.id)} style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem', background: '#059669', borderColor: '#059669' }}>
-                          Dispense (FIFO)
-                        </button>
-                        <button type="button" className="button ghost" onClick={() => handleMarkUnavailable(rx.id)} style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem', color: '#b45309', borderColor: '#fde68a' }}>
-                          Mark Unavailable
-                        </button>
-                      </div>
-                    )}
+                    ))}
                   </div>
-                ))}
-              </div>
+                )}
+
+                {/* Display Free-Text Prescription */}
+                {prescriptionText && (
+                  <div style={{ background: '#fff', padding: '0.75rem', borderRadius: '6px', border: '1px solid #d1fae5' }}>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#166534', marginBottom: '0.25rem' }}>Free-Text Prescription</div>
+                    <p style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: '0.9rem' }}>{prescriptionText}</p>
+                  </div>
+                )}
+
+                {/* If neither exist */}
+                {prescriptions.length === 0 && !prescriptionText && (
+                  <p className="muted small" style={{ margin: 0 }}>No medicines prescribed.</p>
+                )}
+              </>
             )}
           </div>
 

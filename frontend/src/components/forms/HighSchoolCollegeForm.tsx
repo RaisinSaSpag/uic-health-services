@@ -21,8 +21,7 @@ export function HighSchoolCollegeForm({ form, setForm, category }: { form: any; 
           
           {/* 🚨 REMOVED: College checkboxes (FERPA, Immunization Titer) */}
           {/* 🚨 REMOVED: Insurance Provider, Policy Number, Dorm/Housing Profile */}
-
-          <label className="field" style={{ gridColumn: '1 / -1' }}><span>Substance Abuse / Chronic Management History</span><textarea rows={2} value={form.substance_abuse_history} onChange={(e) => setForm({ ...form, substance_abuse_history: e.target.value })} /></label>
+          {/* 🚨 REMOVED: Substance Abuse / Chronic Management History */}
         </>
       )}
       

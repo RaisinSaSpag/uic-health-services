@@ -46,7 +46,6 @@ class PatientController extends Controller
             'birth_date' => ['required', 'date'],
         ]);
 
-        // 🚨 Fix #22: Escape % and _ wildcards so users can't search all patients
         $escapedFirst = addcslashes($validated['first_name'], '%_\\');
         $escapedLast = addcslashes($validated['last_name'], '%_\\');
 
@@ -120,7 +119,6 @@ class PatientController extends Controller
                 'nullable',
                 'email',
                 'max:255',
-                // 🚨 Fix #3: Reject duplicate emails (case-insensitive)
                 function ($attribute, $value, $fail) {
                     if ($value && User::whereRaw('LOWER(email) = ?', [strtolower($value)])->exists()) {
                         $fail('This email is already registered.');
@@ -134,7 +132,6 @@ class PatientController extends Controller
             'patient_type' => ['required', 'in:student,employee'],
             'campus_id' => ['required', 'integer', 'exists:campuses,id'],
             
-            // Academic
             'student_level' => ['nullable', 'in:basic,college'],
             'grade_level' => ['nullable', 'string', 'max:40'],
             'course_program' => ['nullable', 'string', 'max:120'],
@@ -142,56 +139,25 @@ class PatientController extends Controller
             'section' => ['nullable', 'string', 'max:80'],
             'student_id_number' => ['nullable', 'string', 'max:40'],
             
-            // Employment
             'employee_id' => ['nullable', 'string', 'max:40'],
             'employee_type' => ['nullable', 'string', 'max:30'],
             'office_unit_department' => ['nullable', 'string', 'max:120'],
             'position_job_title' => ['nullable', 'string', 'max:120'],
             'employment_status' => ['nullable', 'string', 'max:30'],
 
-            // Medical / Guardian / Consent
             'parent_guardian_name' => ['nullable', 'string', 'max:120'],
             'parent_contact_number' => ['nullable', 'string', 'max:30'],
             'parent_secondary_contact_number' => ['nullable', 'string', 'max:30'],
             'parent_address' => ['nullable', 'string', 'max:255'],
             'current_medications' => ['nullable', 'string', 'max:2000'],
             'medication_instructions' => ['nullable', 'string', 'max:2000'],
-            'preferred_hospital' => ['nullable', 'string', 'max:120'],
             
-            'guardian_signature_base64' => [
-                'nullable',
-                'string',
-                'max:500000',
-                'regex:/^data:image\/(png|jpe?g|webp);base64,[A-Za-z0-9+\/=]+$/',
-            ],
-            'guardian_printed_name' => ['nullable', 'string', 'max:120'],
-            'guardian_relationship' => ['nullable', 'string', 'max:50'],
             'emergency_contact_name' => ['nullable', 'string', 'max:120'],
             'emergency_contact_number' => ['nullable', 'string', 'max:30'],
             'emergency_contact_relationship' => ['nullable', 'string', 'max:100'],
             
-            // Consent Method Fields
-            'consent_method' => ['nullable', 'string', 'in:in_person,verbal_phone,emergency,guardian_designate'],
-            'consent_notes' => ['nullable', 'string', 'max:2000'],
-            'consent_contact_name' => ['nullable', 'string', 'max:120'],
-            'consent_contact_phone' => ['nullable', 'string', 'max:30'],
-            
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
-
-        // 🚨 P5-5 FIX: For minors, require EITHER a signature OR an explicit consent method.
-        $isMinor = in_array($validated['patient_category'], ['grade_school', 'high_school', 'senior_high_school'], true);
-        $hasSignature = !empty($validated['guardian_signature_base64']);
-        $hasConsentMethod = !empty($validated['consent_method']);
-
-        if ($isMinor && !$hasSignature && !$hasConsentMethod) {
-            return response()->json([
-                'message' => 'Minor patients require either a guardian signature or an explicit consent method (verbal_phone, emergency, or guardian_designate).',
-                'errors' => [
-                    'consent' => ['Please record how consent was obtained from the guardian.'],
-                ],
-            ], 422);
-        }
 
         return DB::transaction(function () use ($validated, $request) {
             $roleName = $validated['patient_type'] === 'employee' ? 'employee' : 'student';
@@ -218,7 +184,7 @@ class PatientController extends Controller
                 'must_change_password' => !empty($validated['email']),
             ]);
 
-            // 🚨 FALLBACK LOGIC
+            // FALLBACK LOGIC
             $emergencyName = !empty($validated['emergency_contact_name']) ? $validated['emergency_contact_name'] : ($validated['parent_guardian_name'] ?? 'Unknown');
             $emergencyPhone = !empty($validated['emergency_contact_number']) ? $validated['emergency_contact_number'] : ($validated['parent_contact_number'] ?? 'Unknown');
             $emergencyRelationship = !empty($validated['emergency_contact_relationship']) ? $validated['emergency_contact_relationship'] : 'Unknown';
@@ -240,16 +206,6 @@ class PatientController extends Controller
                 'parent_address' => $validated['parent_address'] ?? null,
                 'current_medications' => $validated['current_medications'] ?? null,
                 'medication_instructions' => $validated['medication_instructions'] ?? null,
-                'preferred_hospital' => $validated['preferred_hospital'] ?? null,
-                'guardian_signature_base64' => $validated['guardian_signature_base64'] ?? null,
-                'guardian_printed_name' => $validated['guardian_printed_name'] ?? null,
-                'guardian_relationship' => $validated['guardian_relationship'] ?? null,
-                'signature_ip_address' => !empty($validated['guardian_signature_base64']) ? $request->ip() : null,
-                'signature_timestamp' => !empty($validated['guardian_signature_base64']) ? now() : null,
-                'consent_method' => $validated['consent_method'] ?? null,
-                'consent_notes' => $validated['consent_notes'] ?? null,
-                'consent_contact_name' => $validated['consent_contact_name'] ?? null,
-                'consent_contact_phone' => $validated['consent_contact_phone'] ?? null,
                 'emergency_contact_name' => $emergencyName,
                 'emergency_contact_number' => $emergencyPhone,
                 'emergency_contact_relationship' => $emergencyRelationship,
@@ -298,7 +254,6 @@ class PatientController extends Controller
                     'first_name' => $validated['first_name'],
                     'last_name' => $validated['last_name'],
                     'email' => $email,
-                    // 🚨 REVERTED (P3-6): Use the email as the password
                     'password' => Hash::make($email),
                     'role_id' => $role->id,
                     'campus_id' => $validated['campus_id'],
@@ -387,7 +342,6 @@ class PatientController extends Controller
             ->limit(10)
             ->get();
 
-        // 🚨 Map the results to explicitly provide the full name
         $mappedPatients = $patients->map(function ($patient) {
             return [
                 'id' => $patient->id,

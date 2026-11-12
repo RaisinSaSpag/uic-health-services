@@ -1,13 +1,12 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Stethoscope, UserRound, Video, ClipboardList } from 'lucide-react';
+import { ArrowLeft, Stethoscope, UserRound, Video, ClipboardList, Pill } from 'lucide-react';
 import { api } from '../lib/api';
 import { notifyError, notifySuccess } from '../lib/alerts';
 import { getErrorMessage } from '../lib/http';
 import { userDisplayName } from '../lib/format';
+import { useAuth } from '../context/AuthContext';
 import type { Patient, UserRecord, PaginatedResponse } from '../types/hsms';
-
-type ConsultationTypeParam = 'walk-in' | 'scheduled';
 
 interface ConsultationFormState {
   consultationDate: string;
@@ -22,9 +21,36 @@ interface ConsultationFormState {
   weightKg: string;
   lastMenstrualPeriod: string;
   complaints: string;
-  diagnosis: string;
-  customDiagnosis: string; // 🚨 NEW
   remarks: string;
+  treatmentPlan: string;
+}
+
+interface ApiStockResponse {
+  id: number;
+  available_quantity: number;
+  date_received: string;
+  expiration_date: string;
+  medicine: {
+    name: string;
+  };
+}
+
+interface AvailableStock {
+  stock_in_id: number;
+  medicine_name: string;
+  quantity_remaining: number;
+  batch_info: string;
+}
+
+interface DispensedItem {
+  name: string;
+  qty: number;
+  stockId: number | null;
+}
+
+interface Campus {
+  id: number;
+  name: string;
 }
 
 const toNullableText = (v: string) => (v.trim() === '' ? null : v.trim());
@@ -49,13 +75,24 @@ const getNowTime = () => {
 };
 
 export function NurseConsultationFormPage() {
-  const { patientId, consultationType } = useParams<{ patientId: string; consultationType: string }>();
+  const { patientId } = useParams<{ patientId: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const [patient, setPatient] = useState<Patient | null>(null);
   const [doctors, setDoctors] = useState<UserRecord[]>([]);
+  const [campuses, setCampuses] = useState<Campus[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+
+  // Medicine Dispensing State
+  const [availableStock, setAvailableStock] = useState<AvailableStock[]>([]);
+  const [medicineSearchText, setMedicineSearchText] = useState<string>('');
+  const [dispenseQuantity, setDispenseQuantity] = useState<string>('1');
+  const [dispensedItems, setDispensedItems] = useState<DispensedItem[]>([]);
+  const [dispensingCampusId, setDispensingCampusId] = useState<string>(
+    user?.campus_id ? String(user.campus_id) : ''
+  );
 
   const [form, setForm] = useState<ConsultationFormState>({
     consultationDate: getToday(),
@@ -70,14 +107,9 @@ export function NurseConsultationFormPage() {
     weightKg: '',
     lastMenstrualPeriod: '',
     complaints: '',
-    diagnosis: '',
-    customDiagnosis: '',
     remarks: '',
+    treatmentPlan: '',
   });
-
-  const type = useMemo<ConsultationTypeParam>(() => {
-    return consultationType === 'scheduled' ? 'scheduled' : 'walk-in';
-  }, [consultationType]);
 
   const loadPatient = useCallback(async () => {
     if (!patientId) return;
@@ -100,22 +132,114 @@ export function NurseConsultationFormPage() {
     }
   }, []);
 
+  const loadCampuses = useCallback(async () => {
+    try {
+      const res = await api.get<Campus[]>('/campuses');
+      setCampuses(res.data);
+    } catch {
+      // Non-fatal
+    }
+  }, []);
+
+  const loadMedicines = useCallback(async () => {
+    if (!dispensingCampusId) return;
+
+    try {
+      const res = await api.get<ApiStockResponse[]>('/inventory/available', { 
+        params: { campus_id: Number(dispensingCampusId) } 
+      });
+      
+      const mappedStock: AvailableStock[] = res.data.map((item) => ({
+        stock_in_id: item.id,
+        medicine_name: item.medicine?.name || 'Unknown Medicine',
+        quantity_remaining: item.available_quantity,
+        batch_info: item.expiration_date ? `Exp: ${item.expiration_date}` : 'No expiry',
+      }));
+
+      setAvailableStock(mappedStock);
+    } catch (err) {
+      void notifyError(getErrorMessage(err, 'Unable to load medicines.'), 'Inventory Error');
+    }
+  }, [dispensingCampusId]);
+
   useEffect(() => {
     void loadPatient();
     void loadDoctors();
-  }, [loadPatient, loadDoctors]);
+    void loadCampuses();
+  }, [loadPatient, loadDoctors, loadCampuses]);
+
+  useEffect(() => {
+    void loadMedicines();
+  }, [loadMedicines]);
 
   const handleChange = (field: keyof ConsultationFormState, value: any) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleReferralToggle = (referred: boolean) => {
-    setForm((prev) => ({
-      ...prev,
-      referredToDoctor: referred,
-      diagnosis: referred ? '' : prev.diagnosis,
-      customDiagnosis: referred ? '' : prev.customDiagnosis, // clear custom too
-    }));
+    setForm((prev) => ({ ...prev, referredToDoctor: referred }));
+  };
+
+  const handleAddMedicine = () => {
+    const name = medicineSearchText.trim();
+    if (!name) {
+      void notifyError('Please enter a medicine name.', 'Invalid Medicine');
+      return;
+    }
+
+    const qty = parseInt(dispenseQuantity, 10);
+    if (isNaN(qty) || qty <= 0) {
+      void notifyError('Please enter a valid quantity.', 'Invalid Quantity');
+      return;
+    }
+
+    const matchedStock = availableStock.find(
+      (s) => `${s.medicine_name} (${s.batch_info})` === name || s.medicine_name === name
+    );
+
+    if (matchedStock) {
+      if (qty > matchedStock.quantity_remaining) {
+        void notifyError(`Only ${matchedStock.quantity_remaining} left in stock for this batch.`, 'Insufficient Stock');
+        return;
+      }
+      
+      setAvailableStock((prev) =>
+        prev.map((s) =>
+          s.stock_in_id === matchedStock.stock_in_id
+            ? { ...s, quantity_remaining: s.quantity_remaining - qty }
+            : s
+        )
+      );
+      
+      setDispensedItems((prev) => [
+        ...prev,
+        { name: matchedStock.medicine_name, qty, stockId: matchedStock.stock_in_id }
+      ]);
+    } else {
+      setDispensedItems((prev) => [
+        ...prev,
+        { name, qty, stockId: null }
+      ]);
+    }
+
+    setMedicineSearchText('');
+    setDispenseQuantity('1');
+  };
+
+  const handleRemoveMedicine = (index: number) => {
+    const itemToRemove = dispensedItems[index];
+    
+    if (itemToRemove.stockId) {
+      setAvailableStock((prev) =>
+        prev.map((s) =>
+          s.stock_in_id === itemToRemove.stockId
+            ? { ...s, quantity_remaining: s.quantity_remaining + itemToRemove.qty }
+            : s
+        )
+      );
+    }
+    
+    setDispensedItems((prev) => prev.filter((_, i) => i !== index));
   };
 
   const submitForm = async (e: FormEvent) => {
@@ -132,7 +256,7 @@ export function NurseConsultationFormPage() {
     try {
       const payload = {
         patient_id: patient.id,
-        consultation_type: type === 'walk-in' ? 'walk_in' : 'scheduled',
+        consultation_type: form.referredToDoctor ? 'telemed' : 'walk_in',
         consultation_date: form.consultationDate,
         consultation_time: form.consultationTime,
         chief_complaint: form.complaints,
@@ -141,9 +265,8 @@ export function NurseConsultationFormPage() {
         temperature_c: toNullableDecimal(form.temperatureC),
         weight_kg: toNullableDecimal(form.weightKg),
         last_menstrual_period: toNullableText(form.lastMenstrualPeriod),
-        // 🚨 Send the custom text if "Other" was selected
-        diagnosis: toNullableText(form.diagnosis === 'Other' ? form.customDiagnosis : form.diagnosis),
         remarks: toNullableText(form.remarks),
+        treatment_plan: toNullableText(form.treatmentPlan),
         referred_to_doctor: form.referredToDoctor,
         is_telemed: form.referredToDoctor && !!form.telemedLink.trim(),
         telemed_link: form.referredToDoctor ? toNullableText(form.telemedLink) : null,
@@ -163,13 +286,23 @@ export function NurseConsultationFormPage() {
         } catch (referralErr) {
           try {
             await api.patch(`/consultations/${consultationId}`, { action: 'cancel' });
-          } catch {
-            // ignore
-          }
-          throw new Error(
-            'Consultation was recorded but the referral could not be created. Please try again or contact IT.',
-          );
+          } catch {}
+          throw new Error('Consultation was recorded but the referral could not be created.');
         }
+      }
+
+      for (const item of dispensedItems) {
+        if (item.stockId) {
+          await api.post('/inventory/dispense', {
+            stock_in_id: item.stockId,
+            quantity_dispensed: item.qty,
+          });
+        }
+      }
+
+      if (dispensedItems.some((i) => !i.stockId)) {
+        const customMeds = dispensedItems.filter((i) => !i.stockId).map((i) => `${i.qty}x ${i.name}`).join(', ');
+        console.log('Custom medicines dispensed (not deducted from inventory):', customMeds);
       }
 
       void notifySuccess(
@@ -254,13 +387,13 @@ export function NurseConsultationFormPage() {
                 fontWeight: 600,
                 textTransform: 'uppercase',
                 letterSpacing: '0.04em',
-                background: type === 'scheduled' ? '#e0f2fe' : '#fdf2f4',
-                color: type === 'scheduled' ? '#0369a1' : '#a3224a',
+                background: form.referredToDoctor ? '#e0f2fe' : '#fdf2f4',
+                color: form.referredToDoctor ? '#0369a1' : '#a3224a',
                 padding: '0.2rem 0.55rem',
                 borderRadius: 6,
               }}
             >
-              {type === 'scheduled' ? 'Scheduled' : 'Walk-in'}
+              {form.referredToDoctor ? 'Telemed' : 'Walk-In'}
             </span>
           </div>
           <p style={{ margin: 0, color: '#64748b', fontSize: '0.95rem' }}>
@@ -361,69 +494,139 @@ export function NurseConsultationFormPage() {
                 placeholder="Describe the patient's main symptoms…"
               />
             </label>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
+              <label className="field">
+                <span>
+                  Nurse's Remark
+                  {form.referredToDoctor && ' *'}
+                </span>
+                <textarea
+                  rows={3}
+                  required={form.referredToDoctor}
+                  value={form.remarks}
+                  onChange={(e) => handleChange('remarks', e.target.value)}
+                  placeholder={
+                    form.referredToDoctor
+                      ? 'Explain why the doctor needs to see this patient'
+                      : 'Enter nurse remarks here...'
+                  }
+                />
+              </label>
+
+              <label className="field">
+                <span>
+                  {form.referredToDoctor ? 'Interim Care / Advice' : 'Treatment Plan'}
+                </span>
+                <textarea
+                  rows={3}
+                  value={form.treatmentPlan}
+                  onChange={(e) => handleChange('treatmentPlan', e.target.value)}
+                  placeholder={
+                    form.referredToDoctor
+                      ? 'e.g. Advised to rest and hydrate while waiting for the doctor…'
+                      : 'e.g. Rest, hydration, paracetamol…'
+                  }
+                />
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div style={sectionCard}>
+          <h3 style={sectionTitle}>
+            <Pill size={18} strokeWidth={2} color="#a3224a" />
+            Dispense Medicine
+          </h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             
-            <label className="field">
-              <span>
-                Diagnosis (Nurse)
-                {!form.referredToDoctor && ' *'}
-              </span>
+            <label className="field" style={{ marginBottom: '0.5rem' }}>
+              <span>Dispensing Campus (Inventory Source)</span>
               <select
-                required={!form.referredToDoctor}
-                value={form.diagnosis}
-                onChange={(e) => handleChange('diagnosis', e.target.value)}
-                disabled={form.referredToDoctor || submitting}
+                value={dispensingCampusId}
+                onChange={(e) => {
+                  setDispensingCampusId(e.target.value);
+                  setDispensedItems([]);
+                  setMedicineSearchText('');
+                }}
+                style={{ maxWidth: '300px' }}
               >
-                <option value="">
-                  {form.referredToDoctor ? '— Doctor will diagnose —' : '— Select diagnosis —'}
-                </option>
-                <option value="Allergic Reaction">Allergic Reaction</option>
-                <option value="Asthma">Asthma</option>
-                <option value="Dental Pain">Dental Pain</option>
-                <option value="Dysmenorrhea">Dysmenorrhea (Menstrual Cramps)</option>
-                <option value="Food Poisoning">Food Poisoning</option>
-                <option value="Gastroenteritis">Gastroenteritis (Stomach ache)</option>
-                <option value="Hypertension">Hypertension (High Blood Pressure)</option>
-                <option value="Migraine">Migraine</option>
-                <option value="Minor Injury">Minor Injury / Wound</option>
-                <option value="Tension Headache">Tension Headache</option>
-                <option value="Upper Respiratory Tract Infection">URTI (Flu)</option>
-                <option value="Viral Infection">Viral Infection (Common Cold)</option>
-                <option value="Other">Other (Specify below)</option>
+                <option value="">— Select Campus —</option>
+                {campuses.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
               </select>
             </label>
 
-            {/* 🚨 Dedicated input if "Other" is selected */}
-            {form.diagnosis === 'Other' && (
-              <label className="field">
-                <span>Specify Diagnosis *</span>
+            <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end' }}>
+              <label className="field" style={{ flex: 1 }}>
+                <span>Medicine Name (Type to search inventory, or enter custom)</span>
                 <input
                   type="text"
-                  required
-                  value={form.customDiagnosis}
-                  onChange={(e) => handleChange('customDiagnosis', e.target.value)}
-                  placeholder="Enter specific diagnosis..."
-                  disabled={form.referredToDoctor || submitting}
+                  list="medicine-options"
+                  placeholder="e.g. Paracetamol (or custom medicine)"
+                  value={medicineSearchText}
+                  onChange={(e) => setMedicineSearchText(e.target.value)}
+                  disabled={!dispensingCampusId}
+                />
+                <datalist id="medicine-options">
+                  {availableStock
+                    .filter((s) => s.quantity_remaining > 0)
+                    .map((s) => (
+                      <option 
+                        key={s.stock_in_id} 
+                        value={`${s.medicine_name} (${s.batch_info})`}
+                      >
+                        {s.quantity_remaining} left
+                      </option>
+                    ))}
+                </datalist>
+              </label>
+              <label className="field" style={{ width: '120px' }}>
+                <span>Qty</span>
+                <input
+                  type="number"
+                  min="1"
+                  value={dispenseQuantity}
+                  onChange={(e) => setDispenseQuantity(e.target.value)}
+                  disabled={!dispensingCampusId}
                 />
               </label>
-            )}
+              <button
+                type="button"
+                className="button ghost"
+                onClick={handleAddMedicine}
+                disabled={!medicineSearchText.trim() || parseInt(dispenseQuantity, 10) <= 0}
+                style={{ padding: '0.75rem 1.5rem', marginBottom: '2px' }}
+              >
+                Add
+              </button>
+            </div>
 
-            <label className="field">
-              <span>
-                Remarks / Treatment Plan
-                {form.referredToDoctor && ' *'}
-              </span>
-              <textarea
-                rows={2}
-                required={form.referredToDoctor}
-                value={form.remarks}
-                onChange={(e) => handleChange('remarks', e.target.value)}
-                placeholder={
-                  form.referredToDoctor
-                    ? 'Explain why the doctor needs to see this patient'
-                    : 'e.g. Rest, hydration, paracetamol…'
-                }
-              />
-            </label>
+            {dispensedItems.length > 0 && (
+              <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                <strong style={{ fontSize: '0.9rem', color: '#475569' }}>Medicines to Dispense:</strong>
+                <ul style={{ margin: '0.5rem 0 0 0', paddingLeft: '1.2rem', color: '#1a2332', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  {dispensedItems.map((item, idx) => (
+                    <li key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', maxWidth: '400px' }}>
+                      <span>
+                        {item.qty}x {item.name}
+                        {!item.stockId && <span style={{ color: '#a3224a', fontSize: '0.75rem', marginLeft: '0.5rem' }}>(Not in inventory)</span>}
+                      </span>
+                      <button 
+                        type="button" 
+                        onClick={() => handleRemoveMedicine(idx)}
+                        style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.85rem', textDecoration: 'underline' }}
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         </div>
 
@@ -455,7 +658,7 @@ export function NurseConsultationFormPage() {
               }}
             >
               <div style={{ fontWeight: 600, color: form.referredToDoctor ? '#475569' : '#a3224a', marginBottom: 4 }}>
-                Triage only
+                Walk-in
               </div>
               <div style={{ fontSize: '0.82rem', color: '#64748b', lineHeight: 1.4 }}>
                 Nurse handles the patient in clinic
@@ -476,10 +679,10 @@ export function NurseConsultationFormPage() {
               }}
             >
               <div style={{ fontWeight: 600, color: form.referredToDoctor ? '#a3224a' : '#475569', marginBottom: 4 }}>
-                Refer to doctor
+                Telemed
               </div>
               <div style={{ fontSize: '0.82rem', color: '#64748b', lineHeight: 1.4 }}>
-                Requires doctor assessment or telemed
+                Requires doctor assessment
               </div>
             </button>
           </div>

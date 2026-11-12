@@ -6,7 +6,6 @@ import {
   ArrowLeftCircle,
   BarChart3,
   Briefcase,
-  CalendarDays,
   ChevronDown,
   CircleUserRound,
   GraduationCap,
@@ -16,6 +15,7 @@ import {
   Printer,
   Search,
   Stethoscope,
+  Video, // 🚨 Changed from CalendarDays to Video
   type LucideIcon,
   MessageSquare,
 } from 'lucide-react';
@@ -28,7 +28,8 @@ import type { Patient } from '../types/hsms';
 
 type NurseSection = 'dashboard' | 'search' | 'print' | 'reports' | 'inventory' | 'referrals' | 'about' | 'chat' | 'notifications';
 type NurseRecordsPatientType = 'student' | 'employee';
-type ConsultationTypeParam = 'walk-in' | 'scheduled';
+// 🚨 Changed 'scheduled' to 'telemed'
+type ConsultationTypeParam = 'walk-in' | 'telemed';
 
 interface NurseMenuItem {
   key: NurseSection;
@@ -315,16 +316,16 @@ export function NurseConsultationTypePage() {
               type="button"
             >
               <Activity size={24} strokeWidth={2.2} />
-              <span>Walk-in</span>
+              <span>Walk-in (Face-to-Face)</span>
             </button>
 
             <button
               className="button ghost nurse-consultation-type-button"
-              onClick={() => redirectToForm('scheduled')}
+              onClick={() => redirectToForm('telemed')}
               type="button"
             >
-              <CalendarDays size={24} strokeWidth={2.2} />
-              <span>Scheduled</span>
+              <Video size={24} strokeWidth={2.2} /> {/* 🚨 Changed icon */}
+              <span>Telemed (Video Call)</span>
             </button>
           </div>
         </section>

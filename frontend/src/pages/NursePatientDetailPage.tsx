@@ -97,12 +97,12 @@ function resolveDetailTab(value: unknown): DetailTab | null {
   return null;
 }
 
+// 🚨 FIX: Only show "Telemed" or "Walk-in", not "Telemed + Referral"
 function consultationTypeLabel(consultation: Consultation): string {
   const baseType = humanizeStatus(consultation.consultation_type)
     .split(' ')
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
-  if (consultation.referred_to_doctor) return `${baseType} + Referral`;
   return baseType;
 }
 
@@ -273,7 +273,6 @@ export function NursePatientDetailPage() {
     if (!selectedConsultation) return [];
     return [
       { label: 'Chief Complaint', value: selectedConsultation.chief_complaint || 'N/A' },
-      // 🚨 P4-3 FIX: snake_case
       { label: 'Diagnosis', value: selectedConsultation.diagnosis || selectedConsultation.symptoms || (selectedConsultation as any).medical_record?.final_diagnosis || 'N/A' },
       { label: 'Blood Pressure', value: selectedConsultation.blood_pressure || 'N/A' },
       { label: 'Pulse (BPM)', value: normalizeNumericText(selectedConsultation.pulse_bpm) },
@@ -286,14 +285,20 @@ export function NursePatientDetailPage() {
     if (!selectedConsultation) return [];
     return [
       { label: 'Last Menstrual Period', value: formatDate(selectedConsultation.last_menstrual_period) },
-      { label: 'Remarks', value: selectedConsultation.remarks || selectedConsultation.triage_notes || 'N/A' },
+      { label: "Nurse's Remark", value: selectedConsultation.remarks || selectedConsultation.triage_notes || 'N/A' },
       { label: 'Triage Notes', value: selectedConsultation.triage_notes || 'N/A' },
       { label: 'Referral Reason', value: selectedConsultation.referral?.referral_reason || 'N/A' },
-      { label: 'Doctor Remarks', value: selectedConsultation.referral?.doctor_remarks || 'N/A' },
-      // 🚨 P4-3 FIX: snake_case
+      { label: "Doctor's Remark", value: selectedConsultation.referral?.doctor_remarks || 'N/A' },
       { label: 'Final Diagnosis', value: (selectedConsultation as any).medical_record?.final_diagnosis || 'N/A' },
       { label: 'Treatment Plan', value: (selectedConsultation as any).medical_record?.treatment_plan || 'N/A' },
       { label: 'Prescription', value: (selectedConsultation as any).medical_record?.prescription || selectedConsultation.referral?.prescription || 'N/A' },
+      // 🚨 NEW: Display dispensed medicines if the backend returns them
+      { 
+        label: 'Dispensed Medicines', 
+        value: (selectedConsultation as any).medicine_stock_outs?.length > 0 
+          ? (selectedConsultation as any).medicine_stock_outs.map((m: any) => `${m.quantity_dispensed}x ${m.stock_in?.medicine?.name || 'Unknown'}`).join(', ')
+          : 'N/A' 
+      },
     ];
   }, [selectedConsultation]);
 

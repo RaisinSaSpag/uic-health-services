@@ -11,7 +11,6 @@ import { LoginPage } from './pages/LoginPage';
 import { NotificationPage } from './pages/NotificationPage';
 import { NurseAboutPage } from './pages/NurseAboutPage';
 import { NurseConsultationFormPage } from './pages/NurseConsultationFormPage';
-import { NurseConsultationTypePage } from './pages/NurseConsultationTypePage';
 import { NurseInventoryDashboardPage } from './pages/NurseInventoryDashboardPage';
 import { NurseInventoryRequestsPage } from './pages/NurseInventoryRequestsPage';
 import { NurseInventoryStocksPage } from './pages/NurseInventoryStocksPage';
@@ -29,7 +28,7 @@ import { NurseWalkInRegistrationPage } from './pages/NurseWalkInRegistrationPage
 import { CoordinatorDashboardPage } from './pages/CoordinatorDashboardPage';
 import { CoordinatorUsersPage } from './pages/CoordinatorUsersPage';
 import { CoordinatorCampusReportPage } from './pages/CoordinatorCampusReportPage';
-import { CoordinatorTermsPage } from './pages/CoordinatorTermsPage'; // <-- NEW IMPORT
+import { CoordinatorTermsPage } from './pages/CoordinatorTermsPage';
 import { ForcePasswordChangePage } from './pages/ForcePasswordChangePage';
 import { PatientPortalPage } from './pages/PatientPortalPage';
 import { useAuth } from './context/AuthContext';
@@ -72,7 +71,11 @@ function App() {
           <Route path="nurse/reports" element={<RoleRoute roles={['nurse']}><NurseReportsPage /></RoleRoute>} />
           <Route path="nurse/about" element={<RoleRoute roles={['nurse']}><NurseAboutPage /></RoleRoute>} />
           <Route path="nurse/patients/:patientId" element={<RoleRoute roles={['nurse']}><NursePatientDetailPage /></RoleRoute>} />
-          <Route path="nurse/patients/:patientId/new-consultation" element={<RoleRoute roles={['nurse']}><NurseConsultationTypePage /></RoleRoute>} />
+          
+          {/* 🚨 Main form route (used by "New Consultation" button) */}
+          <Route path="nurse/patients/:patientId/new-consultation" element={<RoleRoute roles={['nurse']}><NurseConsultationFormPage /></RoleRoute>} />
+          
+          {/* 🚨 Legacy route kept in case old links exist */}
           <Route path="nurse/patients/:patientId/new-consultation/:consultationType" element={<RoleRoute roles={['nurse']}><NurseConsultationFormPage /></RoleRoute>} />
 
           <Route path="nurse/walk-in" element={<RoleRoute roles={['nurse']}><NurseWalkInRegistrationPage /></RoleRoute>} />
@@ -101,7 +104,7 @@ function App() {
           <Route path="coordinator" element={<RoleRoute roles={['coordinator']}><CoordinatorDashboardPage /></RoleRoute>} />
           <Route path="coordinator/users" element={<RoleRoute roles={['coordinator']}><CoordinatorUsersPage /></RoleRoute>} />
           <Route path="coordinator/campus/:campusCode" element={<RoleRoute roles={['coordinator']}><CoordinatorCampusReportPage /></RoleRoute>} />
-          <Route path="coordinator/terms" element={<RoleRoute roles={['coordinator']}><CoordinatorTermsPage /></RoleRoute>} /> {/* <-- NEW ROUTE */}
+          <Route path="coordinator/terms" element={<RoleRoute roles={['coordinator']}><CoordinatorTermsPage /></RoleRoute>} />
           <Route path="coordinator/audit-logs" element={<RoleRoute roles={['coordinator']}><CoordinatorAuditPage /></RoleRoute>} />
           <Route path="coordinator/chat" element={<RoleRoute roles={['coordinator']}><ChatPage /></RoleRoute>} />
           <Route path="coordinator/notifications" element={<RoleRoute roles={['coordinator']}><NotificationPage /></RoleRoute>} />

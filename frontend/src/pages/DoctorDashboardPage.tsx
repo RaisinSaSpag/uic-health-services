@@ -308,7 +308,8 @@ export function DoctorDashboardPage() {
                     <th>Consultation Type</th>
                     <th>Chief Complaint</th>
                     <th>Referral Reason</th>
-                    <th>Status</th>
+                    {/* 🚨 Added explicit width to prevent overlap */}
+                    <th style={{ width: '160px', minWidth: '160px' }}>Status</th>
                     <th>Consulted</th>
                   </tr>
                 </thead>
@@ -320,7 +321,7 @@ export function DoctorDashboardPage() {
                       <td>{normalizeText(consultation.consultation_type)}</td>
                       <td>{truncateText(consultation.chief_complaint)}</td>
                       <td>{truncateText(consultation.referral?.referral_reason ?? 'Not provided')}</td>
-                      <td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
                         <StatusBadge status={consultation.referral?.status ?? consultation.status} />
                       </td>
                       <td>

@@ -5,7 +5,6 @@ import { notifyError, notifySuccess } from '../lib/alerts';
 import { useAuth } from '../context/AuthContext';
 import { getErrorMessage } from '../lib/http';
 import type { PatientIdentifyMatch } from '../types/hsms';
-import { SignatureCanvas } from '../components/SignatureCanvas';
 import { GradeSchoolForm } from '../components/forms/GradeSchoolForm';
 import { HighSchoolCollegeForm } from '../components/forms/HighSchoolCollegeForm';
 
@@ -22,6 +21,7 @@ export function NurseWalkInRegistrationPage() {
   const [step, setStep] = useState<'identify' | 'results' | 'register'>('identify');
   const [regLoading, setRegLoading] = useState(false);
 
+  // 🚨 CLEANED STATE: Removed all dead fields (consent, signature, hospital, etc.)
   const [form, setForm] = useState({
     first_name: '', last_name: '', email: '', birth_date: '', age: '', sex: 'male',
     patient_category: 'college', campus_id: user?.campus_id || 2, notes: '',
@@ -29,14 +29,8 @@ export function NurseWalkInRegistrationPage() {
     employee_id: '', employee_type: '', office_unit_department: '', position_job_title: '', employment_status: '',
     parent_guardian_name: '', parent_contact_number: '', parent_secondary_contact_number: '', parent_address: '',
     emergency_contact_name: '', emergency_contact_number: '', emergency_contact_relationship: '',
-    current_medications: '', medication_instructions: '', preferred_hospital: '', allergies: '', existing_medical_condition: '',
+    current_medications: '', medication_instructions: '', allergies: '', existing_medical_condition: '',
     immunization_status: '', special_health_concern: '', fit_for_school: false, working_student: false, fit_to_work: false,
-    self_carry_permit: false, extracurricular_clearance: false, counseling_authorization: false,
-    otc_consent_given: false, sports_clearance: false, work_immersion_clearance: false, self_consent_18plus: false,
-    immunization_titer_proof: false, ferpa_hipaa_waiver: false,
-    insurance_provider: '', insurance_policy_number: '', dorm_housing_profile: '', substance_abuse_history: '',
-    guardian_printed_name: '', guardian_relationship: '', guardian_signature_base64: '',
-    consent_method: 'in_person', consent_notes: '', consent_contact_name: '', consent_contact_phone: '',
   });
 
   useEffect(() => {
@@ -68,7 +62,10 @@ export function NurseWalkInRegistrationPage() {
     e.preventDefault();
     setRegLoading(true);
     try {
-      const payload = { ...form, patient_type: form.patient_category === 'employee' ? 'employee' : 'student' };
+      const payload = { 
+        ...form, 
+        patient_type: form.patient_category === 'employee' ? 'employee' : 'student',
+      };
       const res = await api.post('/patients', payload);
       notifySuccess('Walk-in patient registered successfully!');
       navigate(`/nurse/patients/${res.data.id}/new-consultation`);
@@ -216,7 +213,6 @@ export function NurseWalkInRegistrationPage() {
             <label className="field"><span>Emergency Contact Person {isMinor ? '(Optional)' : '*'}</span><input required={!isMinor} value={form.emergency_contact_name} onChange={(e) => setForm({ ...form, emergency_contact_name: e.target.value })} placeholder={isMinor ? "Leave blank if same as Guardian" : ""} /></label>
             <label className="field"><span>Emergency Mobile Number {isMinor ? '(Optional)' : '*'}</span><input required={!isMinor} value={form.emergency_contact_number} onChange={(e) => setForm({ ...form, emergency_contact_number: e.target.value })} placeholder={isMinor ? "Leave blank if same as Guardian" : ""} /></label>
             <label className="field"><span>Relationship to Patient (Optional)</span><input placeholder="e.g. Mother, Spouse, Guardian" value={form.emergency_contact_relationship} onChange={(e) => setForm({ ...form, emergency_contact_relationship: e.target.value })} /></label>
-            <label className="field"><span>Preferred Hospital (Optional)</span><input placeholder="e.g. Davao Doctors Hospital" value={form.preferred_hospital} onChange={(e) => setForm({ ...form, preferred_hospital: e.target.value })} /></label>
           </div>
         </div>
 
@@ -227,7 +223,6 @@ export function NurseWalkInRegistrationPage() {
             <label className="field"><span>Chronic Medical Conditions (Optional)</span><input placeholder="Type 'None' if no chronic conditions" value={form.existing_medical_condition} onChange={(e) => setForm({ ...form, existing_medical_condition: e.target.value })} /></label>
             <label className="field" style={{ gridColumn: '1 / -1' }}><span>Current Daily Medications (Optional)</span><input placeholder="Type 'None' if no daily medications" value={form.current_medications} onChange={(e) => setForm({ ...form, current_medications: e.target.value })} /></label>
 
-            {/* MOVED GRADE SCHOOL MEDICAL FIELDS HERE */}
             {form.patient_category === 'grade_school' && (
               <>
                 <label className="field">
@@ -249,49 +244,6 @@ export function NurseWalkInRegistrationPage() {
             <label className="field" style={{ gridColumn: '1 / -1' }}><span>Nurse Remarks / Notes (Optional)</span><textarea rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></label>
           </div>
         </div>
-
-        {isMinor && (
-          <div style={{ ...sectionStyle, border: '1px solid #fca5a5', background: '#fff5f5' }}>
-            <div style={{ ...headingStyle, borderBottom: '1px solid #fecaca', color: '#991b1b' }}><span style={{ ...badgeStyle, background: '#dc2626' }}>5</span>Parental Consent & Signature</div>
-            <div style={{ marginBottom: '1.25rem' }}>
-              <label className="field"><span style={{ fontWeight: 600, color: '#7f1d1d' }}>Consent Verification Method *</span>
-                <select value={form.consent_method} onChange={(e) => setForm({ ...form, consent_method: e.target.value })} style={{ background: '#fff', borderColor: '#fca5a5', fontWeight: 600 }}>
-                  <option value="in_person">In Person (Parent / Guardian present)</option>
-                  <option value="verbal_phone">Verbal Phone Consent (Logged by Nurse)</option>
-                  <option value="guardian_designate">Authorized Adult Designate Present</option>
-                  <option value="emergency">Emergency Medical Care Protocol</option>
-                </select>
-              </label>
-            </div>
-            {form.consent_method === 'in_person' && (
-              <div style={{ background: '#fff', padding: '1.25rem', borderRadius: '8px', border: '1px solid #fecaca' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
-                  <label className="field"><span>Printed Legal Name *</span><input required value={form.guardian_printed_name} onChange={(e) => setForm({ ...form, guardian_printed_name: e.target.value })} placeholder="Full Legal Name" /></label>
-                  <label className="field"><span>Relationship *</span><input required value={form.guardian_relationship} onChange={(e) => setForm({ ...form, guardian_relationship: e.target.value })} placeholder="e.g. Mother" /></label>
-                </div>
-                <div className="field"><span style={{ fontWeight: 500, fontSize: '0.9rem', marginBottom: '0.5rem', display: 'block' }}>Handwritten Digital Signature *</span><SignatureCanvas onChange={(base64) => setForm({ ...form, guardian_signature_base64: base64 })} /></div>
-              </div>
-            )}
-            {form.consent_method !== 'in_person' && (
-              <div style={{ background: '#fff', padding: '1.25rem', borderRadius: '8px', border: '1px solid #fecaca' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
-                  <label className="field">
-                    <span>Name of Contact Person {form.consent_method !== 'emergency' ? '*' : '(Optional)'}</span>
-                    <input required={form.consent_method !== 'emergency'} value={form.consent_contact_name} onChange={(e) => setForm({ ...form, consent_contact_name: e.target.value })} placeholder={form.consent_method === 'emergency' ? 'N/A - Emergency' : 'Name of parent/guardian'} />
-                  </label>
-                  <label className="field">
-                    <span>Phone Number Dialed {form.consent_method !== 'emergency' ? '*' : '(Optional)'}</span>
-                    <input required={form.consent_method !== 'emergency'} value={form.consent_contact_phone} onChange={(e) => setForm({ ...form, consent_contact_phone: e.target.value })} placeholder="+63 9XX XXX XXXX" />
-                  </label>
-                </div>
-                <label className="field">
-                  <span>Nurse Audit Trail / Verification Notes *</span>
-                  <textarea required rows={3} placeholder="Log exact timestamp, call details, or emergency clinical rationale..." value={form.consent_notes} onChange={(e) => setForm({ ...form, consent_notes: e.target.value })} />
-                </label>
-              </div>
-            )}
-          </div>
-        )}
 
         <div style={{ marginTop: '2rem', marginBottom: '4rem' }}>
           <button className="button primary" type="submit" disabled={regLoading} style={{ width: '100%', padding: '1rem', fontSize: '1.05rem', fontWeight: 600, borderRadius: '8px', background: '#a3224a', borderColor: '#a3224a', cursor: regLoading ? 'not-allowed' : 'pointer' }}>

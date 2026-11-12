@@ -83,6 +83,7 @@ class ConsultationService
             'last_menstrual_period' => $payload['last_menstrual_period'] ?? null,
             'diagnosis' => $payload['diagnosis'] ?? null,
             'remarks' => $payload['remarks'] ?? null,
+            'treatment_plan' => $payload['treatment_plan'] ?? null, // <-- ADDED THIS LINE
         ]);
 
         $this->auditLogService->log(
