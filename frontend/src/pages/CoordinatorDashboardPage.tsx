@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom'; // <-- Added for navigation
+import { useNavigate } from 'react-router-dom';
 import { 
   Activity, 
   AlertTriangle, 
@@ -50,7 +50,7 @@ interface CampusData {
   campus_name: string;
   metrics: CampusMetrics;
   inventory: CampusInventory;
-  patient_demographics: Record<string, number>;
+  patient_demographics: Record<string, number> | any[];
   top_diseases: Disease[];
 }
 
@@ -149,12 +149,19 @@ export function CoordinatorDashboardPage() {
 }
 
 function CampusCard({ campus }: { campus: CampusData }) {
-  const navigate = useNavigate(); // <-- Added navigation
+  const navigate = useNavigate();
 
+  // 🚨 FIX: Handle empty patient_demographics safely (could be [] or {})
   const demographicChartData = useMemo(() => {
-    return Object.entries(campus.patient_demographics).map(([category, value]) => ({
-      name: category.replace('_', ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
-      value,
+    if (!campus.patient_demographics) return [];
+    
+    const entries = Array.isArray(campus.patient_demographics)
+      ? campus.patient_demographics
+      : Object.entries(campus.patient_demographics);
+
+    return entries.map(([category, value]) => ({
+      name: String(category).replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
+      value: Number(value),
     }));
   }, [campus.patient_demographics]);
 
@@ -240,13 +247,15 @@ function CampusCard({ campus }: { campus: CampusData }) {
                   margin={{ top: 5, right: 10, left: 0, bottom: 5 }}
                 >
                   <XAxis type="number" hide />
+                  {/* 🚨 FIX: Truncate long diagnosis labels */}
                   <YAxis 
                     dataKey="diagnosis" 
                     type="category" 
-                    width={100} 
+                    width={120} 
                     tick={{ fontSize: 11, fill: '#64748b' }}
                     axisLine={false}
                     tickLine={false}
+                    tickFormatter={(value: string) => value.length > 18 ? `${value.substring(0, 18)}…` : value}
                   />
                   <Tooltip content={<CustomBarTooltip />} />
                   <Bar dataKey="count" fill="#d44974" radius={[0, 4, 4, 0]} barSize={16} />
@@ -315,13 +324,24 @@ const CustomPieTooltip = ({ active, payload }: any) => {
   return null;
 };
 
+// 🚨 FIX: Tooltip that wraps long diagnosis text
 const CustomBarTooltip = ({ active, payload }: any) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
     return (
-      <div style={{ backgroundColor: '#0f172a', color: 'white', padding: '0.4rem 0.75rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 500 }}>
-        <span>{data.diagnosis}: </span>
-        <span style={{ fontWeight: 'bold', color: '#fda4af' }}>{data.count} cases</span>
+      <div style={{ 
+        backgroundColor: '#0f172a', 
+        color: 'white', 
+        padding: '0.5rem 0.85rem', 
+        borderRadius: '6px', 
+        fontSize: '0.75rem', 
+        fontWeight: 500, 
+        maxWidth: '250px', 
+        whiteSpace: 'normal', 
+        wordBreak: 'break-word' 
+      }}>
+        <div style={{ marginBottom: '0.25rem' }}>{data.diagnosis}</div>
+        <div style={{ fontWeight: 'bold', color: '#fda4af' }}>{data.count} cases</div>
       </div>
     );
   }

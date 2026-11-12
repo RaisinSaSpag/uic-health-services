@@ -53,8 +53,9 @@ export function NurseReportsPage() {
     try {
       const params: any = { per_page: 100 };
       if (useTermFilter && activeTerm) {
-        params.date_from = activeTerm.start_date;
-        params.date_to = activeTerm.end_date;
+        // 🚨 FIX: Slice to YYYY-MM-DD to prevent 422 date_format errors
+        params.date_from = String(activeTerm.start_date).slice(0, 10);
+        params.date_to = String(activeTerm.end_date).slice(0, 10);
       } else {
         const start = new Date(year, month - 1, 1);
         const end = new Date(year, month, 0);
@@ -267,7 +268,7 @@ function TopDiseasesChartCard({ data }: { data: { name: string; count: number }[
               <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
               <XAxis type="number" tick={{ fontSize: 12, fill: '#64748b' }} axisLine={false} tickLine={false} />
               <YAxis dataKey="name" type="category" width={140} tick={{ fontSize: 12, fill: '#475569' }} axisLine={false} tickLine={false} tickFormatter={(value: string) => value.length > 18 ? `${value.substring(0, 18)}…` : value} />
-              <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }} />
+              <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', maxWidth: '280px', whiteSpace: 'normal', wordBreak: 'break-word' }} />
               <Bar dataKey="count" fill="#d44974" radius={[0, 4, 4, 0]} barSize={20} />
             </BarChart>
           </ResponsiveContainer>

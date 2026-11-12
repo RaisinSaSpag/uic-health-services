@@ -41,8 +41,9 @@ export function CoordinatorCampusReportPage() {
     try {
       const params: any = {};
       if (useTermFilter && activeTerm) {
-        params.date_from = activeTerm.start_date;
-        params.date_to = activeTerm.end_date;
+        // 🚨 FIX: Slice to YYYY-MM-DD to avoid 422 date_format errors
+        params.date_from = String(activeTerm.start_date).slice(0, 10);
+        params.date_to = String(activeTerm.end_date).slice(0, 10);
       } else {
         params.month = month;
         params.year = year;
@@ -62,7 +63,7 @@ export function CoordinatorCampusReportPage() {
   if (!data) return <div className="page">No data found for this campus.</div>;
 
   const demographicChartData = Object.entries(data.demographics || {}).map(([name, value]) => ({
-    name: name.replace('_', ' ').toUpperCase(),
+    name: name.replace(/_/g, ' ').toUpperCase(),
     value: value as number,
   }));
 
@@ -128,9 +129,13 @@ export function CoordinatorCampusReportPage() {
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data.top_diseases || []} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="diagnosis" tick={{ fontSize: 12 }} />
+                <XAxis 
+                  dataKey="diagnosis" 
+                  tick={{ fontSize: 12 }} 
+                  tickFormatter={(value: string) => value.length > 20 ? `${value.substring(0, 20)}…` : value}
+                />
                 <YAxis />
-                <Tooltip />
+                <Tooltip contentStyle={{ maxWidth: '250px', whiteSpace: 'normal', wordBreak: 'break-word', borderRadius: '8px', border: '1px solid #e2e8f0' }} />
                 <Bar dataKey="count" fill="#d44974" radius={[4, 4, 0, 0]} barSize={40} />
               </BarChart>
             </ResponsiveContainer>
