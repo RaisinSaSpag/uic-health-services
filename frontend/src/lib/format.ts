@@ -58,12 +58,15 @@ export function formatDate(value: string | null | undefined): string {
   }).format(date);
 }
 
+// 🚨 TIMEZONE FIX: Appends 'Z' to force UTC conversion to local time
 export function formatDateTime(value: string | null | undefined): string {
   if (!value) {
     return 'N/A';
   }
 
-  const date = new Date(value);
+  // If the string from the database doesn't have a timezone indicator, treat it as UTC
+  const safeValue = value.endsWith('Z') || value.includes('+') ? value : `${value}Z`;
+  const date = new Date(safeValue);
 
   if (Number.isNaN(date.getTime())) {
     return value;
@@ -75,6 +78,7 @@ export function formatDateTime(value: string | null | undefined): string {
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
+    hour12: true, // Ensure it shows AM/PM clearly
   }).format(date);
 }
 

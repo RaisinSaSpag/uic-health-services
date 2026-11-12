@@ -39,51 +39,15 @@ interface NurseMenuItem {
 }
 
 const nurseMenuItems: NurseMenuItem[] = [
-  {
-    key: 'dashboard',
-    label: 'Dashboard',
-    icon: LayoutDashboard,
-  },
-  {
-    key: 'search',
-    label: 'Search Records',
-    icon: Search,
-  },
-  {
-    key: 'print',
-    label: 'Print Prescription',
-    icon: Printer,
-  },
-  {
-    key: 'reports',
-    label: 'Reports',
-    icon: BarChart3,
-  },
-  {
-    key: 'inventory',
-    label: 'Inventory',
-    icon: Package,
-  },
-  {
-    key: 'referrals',
-    label: 'Referrals',
-    icon: Stethoscope,
-  },
-  {
-    key: 'about',
-    label: 'About',
-    icon: Info,
-  },
-  {
-    key: 'chat',
-    label: 'Messages',
-    icon: MessageSquare,
-  },
-  {
-    key: 'notifications',
-    label: 'Notifications',
-    icon: Bell,
-  },
+  { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { key: 'search', label: 'Search Records', icon: Search },
+  { key: 'print', label: 'Print Prescription', icon: Printer },
+  { key: 'reports', label: 'Reports', icon: BarChart3 },
+  { key: 'inventory', label: 'Inventory', icon: Package },
+  { key: 'referrals', label: 'Referrals', icon: Stethoscope },
+  { key: 'about', label: 'About', icon: Info },
+  { key: 'chat', label: 'Messages', icon: MessageSquare },
+  { key: 'notifications', label: 'Notifications', icon: Bell },
 ];
 
 const studentSortOptions: SortOption[] = [
@@ -104,7 +68,6 @@ function normalizePatientType(rawPatientType: string | undefined): NurseRecordsP
   if (rawPatientType === 'student' || rawPatientType === 'employee') {
     return rawPatientType;
   }
-
   return null;
 }
 
@@ -112,31 +75,23 @@ function toDisplayText(value: string | null | undefined): string {
   if (!value || value.trim() === '') {
     return 'N/A';
   }
-
-  return value
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (character) => character.toUpperCase());
+  return value.replace(/_/g, ' ').replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
 function getPatientAge(patient: Patient): number {
   if (typeof patient.age === 'number' && patient.age > 0) {
     return patient.age;
   }
-
   const birthDate = patient.birth_date ? new Date(patient.birth_date) : null;
-
   if (!birthDate || Number.isNaN(birthDate.getTime())) {
     return 0;
   }
-
   const now = new Date();
   let age = now.getFullYear() - birthDate.getFullYear();
   const monthDiff = now.getMonth() - birthDate.getMonth();
-
   if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < birthDate.getDate())) {
     age -= 1;
   }
-
   return Math.max(age, 0);
 }
 
@@ -144,11 +99,9 @@ function studentLevelLabel(patient: Patient): string {
   if (patient.student_level === 'basic') {
     return 'Basic Education';
   }
-
   if (patient.student_level === 'college') {
     return 'College';
   }
-
   return 'N/A';
 }
 
@@ -156,27 +109,33 @@ function studentProgramOrGrade(patient: Patient): string {
   if (patient.student_level === 'college') {
     return patient.course_program?.trim() || 'N/A';
   }
-
   const gradeLevel = patient.grade_level?.trim() || '';
   const section = patient.section?.trim() || '';
-
   if (gradeLevel !== '' && section !== '') {
     return `${gradeLevel} - ${section}`;
   }
-
   if (gradeLevel !== '') {
     return gradeLevel;
   }
-
   if (section !== '') {
     return section;
   }
-
   return 'N/A';
 }
 
 function compareStrings(left: string, right: string): number {
   return left.localeCompare(right, undefined, { sensitivity: 'base' });
+}
+
+// 🚨 NEW HELPER: Falls back to the patient table if there is no linked user account
+function getPatientDisplayName(patient: Patient): string {
+  if (patient.user) {
+    return userDisplayName(patient.user);
+  }
+  if (patient.first_name || patient.last_name) {
+    return `${patient.first_name ?? ''} ${patient.last_name ?? ''}`.trim();
+  }
+  return 'Unknown Patient';
 }
 
 export function NurseRecordsPage() {
@@ -206,9 +165,7 @@ export function NurseRecordsPage() {
     if (!patientType) {
       return;
     }
-
     setLoading(true);
-
     try {
       const response = await api.get<PaginatedResponse<Patient>>('/patients', {
         params: {
@@ -216,7 +173,6 @@ export function NurseRecordsPage() {
           per_page: 100,
         },
       });
-
       setRecords(response.data.data);
     } catch (err) {
       void notifyError(getErrorMessage(err, 'Unable to load patient records.'), 'Load Failed');
@@ -230,53 +186,16 @@ export function NurseRecordsPage() {
   }, [loadRecords]);
 
   const onMenuClick = (section: NurseSection): void => {
-    if (section === 'inventory') {
-      navigate('/nurse/inventory');
-      return;
-    }
-
-    if (section === 'chat') {
-      navigate('/nurse/chat');
-      return;
-    }
-
-    if (section === 'notifications') {
-      navigate('/nurse/notifications');
-      return;
-    }
-
+    if (section === 'inventory') { navigate('/nurse/inventory'); return; }
+    if (section === 'chat') { navigate('/nurse/chat'); return; }
+    if (section === 'notifications') { navigate('/nurse/notifications'); return; }
     setActiveSection(section);
-
-    if (section === 'dashboard') {
-      navigate('/nurse');
-      return;
-    }
-
-    if (section === 'print') {
-      navigate('/nurse/print-prescription');
-      return;
-    }
-
-    if (section === 'reports') {
-      navigate('/nurse/reports');
-      return;
-    }
-
-    if (section === 'referrals') {
-      navigate('/nurse/referrals');
-      return;
-    }
-
-    if (section === 'about') {
-      navigate('/nurse/about');
-      return;
-    }
-
-    if (section === 'search') {
-      setIsSearchOpen((current) => !current);
-      return;
-    }
-
+    if (section === 'dashboard') { navigate('/nurse'); return; }
+    if (section === 'print') { navigate('/nurse/print-prescription'); return; }
+    if (section === 'reports') { navigate('/nurse/reports'); return; }
+    if (section === 'referrals') { navigate('/nurse/referrals'); return; }
+    if (section === 'about') { navigate('/nurse/about'); return; }
+    if (section === 'search') { setIsSearchOpen((current) => !current); return; }
     setIsSearchOpen(false);
   };
 
@@ -302,13 +221,11 @@ export function NurseRecordsPage() {
       if (normalizedSearch === '') {
         return true;
       }
-
       const baseFields = [
-        userDisplayName(patient.user).toLowerCase(),
+        getPatientDisplayName(patient).toLowerCase(), // 🚨 Uses the new helper
         toDisplayText(patient.sex).toLowerCase(),
         String(getPatientAge(patient)),
       ];
-
       const patientTypeSpecificFields =
         patientType === 'student'
           ? [
@@ -322,7 +239,6 @@ export function NurseRecordsPage() {
               (patient.position_job_title ?? '').toLowerCase(),
               toDisplayText(patient.employment_status).toLowerCase(),
             ];
-
       return [...baseFields, ...patientTypeSpecificFields].some((value) => value.includes(normalizedSearch));
     });
 
@@ -330,20 +246,16 @@ export function NurseRecordsPage() {
       if (sortBy === 'age') {
         return getPatientAge(left) - getPatientAge(right);
       }
-
       if (sortBy === 'first_name') {
-        return compareStrings(left.user?.first_name ?? '', right.user?.first_name ?? '');
+        return compareStrings(left.user?.first_name ?? left.first_name ?? '', right.user?.first_name ?? right.first_name ?? '');
       }
-
       if (sortBy === 'student_level') {
         return compareStrings(studentLevelLabel(left), studentLevelLabel(right));
       }
-
       if (sortBy === 'employment_status') {
         return compareStrings(toDisplayText(left.employment_status), toDisplayText(right.employment_status));
       }
-
-      return compareStrings(left.user?.last_name ?? '', right.user?.last_name ?? '');
+      return compareStrings(left.user?.last_name ?? left.last_name ?? '', right.user?.last_name ?? right.last_name ?? '');
     });
   }, [patientType, records, searchTerm, sortBy]);
 
@@ -496,7 +408,7 @@ export function NurseRecordsPage() {
                         {patientType === 'student' ? (
                           <>
                             <td>{patient.student_id_number || 'N/A'}</td>
-                            <td>{userDisplayName(patient.user)}</td>
+                            <td>{getPatientDisplayName(patient)}</td>
                             <td>{getPatientAge(patient)}</td>
                             <td>{toDisplayText(patient.sex)}</td>
                             <td>{studentLevelLabel(patient)}</td>
@@ -514,7 +426,7 @@ export function NurseRecordsPage() {
                           </>
                         ) : (
                           <>
-                            <td>{userDisplayName(patient.user)}</td>
+                            <td>{getPatientDisplayName(patient)}</td>
                             <td>{getPatientAge(patient)}</td>
                             <td>{toDisplayText(patient.sex)}</td>
                             <td>{patient.employee_id || 'N/A'}</td>

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace App\Http\Controllers\Api\V1;
 
@@ -45,23 +45,23 @@ class ReportController extends Controller
         return response()->json($this->reportSummaryService->generateNarrative($validated));
     }
 
-    /**
-     * Coordinator Command Center: Deep analytics for every campus.
-     */
     public function clinicCommandCenter(Request $request): JsonResponse
     {
         $validated = $request->validate([
+            'date_from' => ['nullable', 'date_format:Y-m-d'],
+            'date_to' => ['nullable', 'date_format:Y-m-d'],
             'month' => ['nullable', 'integer', 'min:1', 'max:12'],
             'year' => ['nullable', 'integer', 'min:2020'],
         ]);
 
+        $dateFrom = $validated['date_from'] ?? null;
+        $dateTo = $validated['date_to'] ?? null;
         $month = $validated['month'] ?? now()->month;
         $year = $validated['year'] ?? now()->year;
 
         $campuses = Campus::all();
         $reportData = [];
 
-        // 🚨 Fix #8: Calculate TRUE available stock (subtract dispensed + archived)
         $stockIn = DB::table('medicine_stock_in')
             ->select('campus_id', DB::raw('SUM(quantity) as total'))
             ->groupBy('campus_id')
@@ -84,26 +84,23 @@ class ReportController extends Controller
         
         $stockTotals = [];
         foreach ($stockIn as $campusId => $totalIn) {
-            $stockTotals[$campusId] = max(0, 
-                (int) $totalIn 
-                - (int) ($stockOut[$campusId] ?? 0) 
-                - (int) ($stockArchived[$campusId] ?? 0)
-            );
+            $stockTotals[$campusId] = max(0, (int) $totalIn - (int) ($stockOut[$campusId] ?? 0) - (int) ($stockArchived[$campusId] ?? 0));
         }
 
         foreach ($campuses as $campus) {
             $consultationsQuery = Consultation::whereHas('patient', function ($q) use ($campus) {
                 $q->where('campus_id', $campus->id);
-            })->whereMonth('created_at', $month)->whereYear('created_at', $year);
+            });
+
+            if ($dateFrom) $consultationsQuery->whereDate('created_at', '>=', $dateFrom);
+            if ($dateTo) $consultationsQuery->whereDate('created_at', '<=', $dateTo);
+            if (!$dateFrom && !$dateTo) {
+                $consultationsQuery->whereMonth('created_at', $month)->whereYear('created_at', $year);
+            }
 
             $totalConsultations = (clone $consultationsQuery)->count();
             $totalTelemed = (clone $consultationsQuery)->where('is_telemed', true)->count();
-            
-            $totalReferrals = (clone $consultationsQuery)
-                ->whereNotNull('referral_status')
-                ->where('referral_status', '!=', 'none')
-                ->count();
-                
+            $totalReferrals = (clone $consultationsQuery)->whereNotNull('referral_status')->where('referral_status', '!=', 'none')->count();
             $totalInjuries = (clone $consultationsQuery)->where('consultation_type', 'injury')->count();
 
             $patientCategories = Patient::where('campus_id', $campus->id)
@@ -113,9 +110,7 @@ class ReportController extends Controller
                 ->toArray();
 
             $totalStockAvailable = (int) ($stockTotals[$campus->id] ?? 0);
-            
-            // 🚨 Fix #23: Count PER-MEDICINE available stock, not per-batch.
-            // A medicine with 3 batches of 10 each should count as ONE low-stock item, not three.
+
             $lowStockItems = DB::table('medicine_stock_in as msi')
                 ->where('msi.campus_id', $campus->id)
                 ->selectRaw('
@@ -130,7 +125,6 @@ class ReportController extends Controller
                 ->get()
                 ->count();
 
-            // 🚨 Fix #23: Exclude already-expired batches from "expiring soon"
             $expiringItems = DB::table('medicine_stock_in')
                 ->where('campus_id', $campus->id)
                 ->whereNotNull('expiration_date')
@@ -167,21 +161,27 @@ class ReportController extends Controller
         }
 
         return response()->json([
-            'period' => ['month' => $month, 'year' => $year],
+            'period' => [
+                'date_from' => $dateFrom,
+                'date_to' => $dateTo,
+                'month' => $dateFrom ? null : $month,
+                'year' => $dateFrom ? null : $year,
+            ],
             'campuses' => $reportData,
         ]);
     }
 
-    /**
-     * Detailed report for a specific campus.
-     */
     public function campusDetail(Request $request, string $campusCode): JsonResponse
     {
         $validated = $request->validate([
+            'date_from' => ['nullable', 'date_format:Y-m-d'],
+            'date_to' => ['nullable', 'date_format:Y-m-d'],
             'month' => ['nullable', 'integer', 'min:1', 'max:12'],
             'year' => ['nullable', 'integer', 'min:2020'],
         ]);
 
+        $dateFrom = $validated['date_from'] ?? null;
+        $dateTo = $validated['date_to'] ?? null;
         $month = $validated['month'] ?? now()->month;
         $year = $validated['year'] ?? now()->year;
 
@@ -189,7 +189,13 @@ class ReportController extends Controller
 
         $consultationsQuery = Consultation::whereHas('patient', function ($q) use ($campus) {
             $q->where('campus_id', $campus->id);
-        })->whereMonth('created_at', $month)->whereYear('created_at', $year);
+        });
+
+        if ($dateFrom) $consultationsQuery->whereDate('created_at', '>=', $dateFrom);
+        if ($dateTo) $consultationsQuery->whereDate('created_at', '<=', $dateTo);
+        if (!$dateFrom && !$dateTo) {
+            $consultationsQuery->whereMonth('created_at', $month)->whereYear('created_at', $year);
+        }
 
         $topDiseases = (clone $consultationsQuery)
             ->whereNotNull('diagnosis')

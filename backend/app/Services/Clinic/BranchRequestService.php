@@ -152,7 +152,8 @@ class BranchRequestService
     }
 
     /**
-     * 🚨 STEP 1: Supplying campus physically ships the medicine (deducts their stock)
+     * 🚨 STEP 1: Supplying campus physically ships the medicine (deducts their stock).
+     * 🚨 FIX: Now allows shipping from 'pending' (since Approve step was removed from frontend).
      */
     public function ship(int $requestId, int $actorId): BranchRequest
     {
@@ -161,7 +162,9 @@ class BranchRequestService
             $request = BranchRequest::lockForUpdate()->find($requestId);
 
             if (!$request) throw new RuntimeException('Branch request not found.');
-            if ($request->status !== 'approved') throw new RuntimeException('Only approved requests can be shipped.');
+            if (!in_array($request->status, ['pending', 'approved'], true)) {
+                throw new RuntimeException('Only pending or approved requests can be shipped.');
+            }
 
             $actorRole = strtolower((string) $actor->role?->name);
             if ($actorRole !== 'coordinator' && (int) $actor->campus_id !== (int) $request->to_campus_id) {
@@ -199,8 +202,10 @@ class BranchRequestService
                 throw new RuntimeException('Cannot ship transfer: some stock batches have no expiration date.');
             }
 
-            // 🚨 Notice: We do NOT call stockIn() here. The medicine is "in transit".
-            $request->update(['status' => 'shipped']);
+            $request->update([
+                'status' => 'shipped',
+                'approved_by' => $request->approved_by ?? $actorId, // 🚨 Mark as "approved by" the shipper if not already approved
+            ]);
             $this->auditLogService->record($actorId, 'branch_request.shipped', 'branch_request', $request->id);
 
             return $request->fresh();
@@ -232,7 +237,9 @@ class BranchRequestService
     }
 
     /**
-     * 🚨 STEP 3: Requesting campus manually stocks in the medicine (finalizes the request)
+     * 🚨 STEP 3: Requesting campus marks the request as completed.
+     * We do NOT create a stock batch here. The nurse must manually go to the Inventory page
+     * to stock-in the physical batch with its expiration date.
      */
     public function markStockedIn(int $requestId, int $actorId): BranchRequest
     {

@@ -74,11 +74,7 @@ export function NurseInventoryRequestsPage() {
   const { basePath, isDoctor } = useInventoryBasePath();
 
   const resolvedMenuItems = useMemo(
-    () =>
-      menuItems.map((item) => ({
-        ...item,
-        path: item.path.replace('/nurse/inventory', basePath),
-      })),
+    () => menuItems.map((item) => ({ ...item, path: item.path.replace('/nurse/inventory', basePath) })),
     [basePath],
   );
 
@@ -89,7 +85,6 @@ export function NurseInventoryRequestsPage() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<'incoming' | 'outgoing' | 'all'>('incoming');
 
-  // Modal
   const [isModalOpen, setModalOpen] = useState(false);
   const [formToCampus, setFormToCampus] = useState<number | ''>('');
   const [formMedicine, setFormMedicine] = useState<number | ''>('');
@@ -101,11 +96,7 @@ export function NurseInventoryRequestsPage() {
   const campusId = user?.campus_id ?? null;
 
   const loadAll = useCallback(async () => {
-    if (!campusId) {
-      setLoading(false);
-      return;
-    }
-
+    if (!campusId) { setLoading(false); return; }
     setLoading(true);
     try {
       const [requestsRes, campusesRes, medicinesRes] = await Promise.all([
@@ -113,29 +104,20 @@ export function NurseInventoryRequestsPage() {
         api.get<Campus[]>('/campuses', { params: { exclude_id: campusId } }),
         api.get<Medicine[]>('/medicines'),
       ]);
-
       setRequests(Array.isArray(requestsRes.data) ? requestsRes.data : []);
       setCampuses(Array.isArray(campusesRes.data) ? campusesRes.data : []);
       setMedicines(Array.isArray(medicinesRes.data) ? medicinesRes.data : []);
     } catch (err) {
       void notifyError(getErrorMessage(err, 'Unable to load branch requests.'), 'Load Failed');
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   }, [campusId]);
 
-  useEffect(() => {
-    void loadAll();
-  }, [loadAll]);
+  useEffect(() => { void loadAll(); }, [loadAll]);
 
   const filteredRequests = useMemo(() => {
     let list = requests;
-
-    if (tab === 'incoming' && campusId) {
-      list = list.filter((r) => r.to_campus_id === campusId);
-    } else if (tab === 'outgoing' && campusId) {
-      list = list.filter((r) => r.from_campus_id === campusId);
-    }
+    if (tab === 'incoming' && campusId) list = list.filter((r) => r.to_campus_id === campusId); // Incoming = SUPPLYING campus
+    else if (tab === 'outgoing' && campusId) list = list.filter((r) => r.from_campus_id === campusId); // Outgoing = REQUESTING campus
 
     const normalized = search.trim().toLowerCase();
     if (normalized === '') return list;
@@ -145,33 +127,16 @@ export function NurseInventoryRequestsPage() {
       const status = request.status?.toLowerCase() ?? '';
       const fromName = request.from_campus?.name?.toLowerCase() ?? '';
       const toName = request.to_campus?.name?.toLowerCase() ?? '';
-      return (
-        medicineName.includes(normalized) ||
-        status.includes(normalized) ||
-        fromName.includes(normalized) ||
-        toName.includes(normalized)
-      );
+      return medicineName.includes(normalized) || status.includes(normalized) || fromName.includes(normalized) || toName.includes(normalized);
     });
   }, [requests, tab, campusId, search]);
 
-  const openModal = (): void => {
-    setFormToCampus('');
-    setFormMedicine('');
-    setFormQuantity('');
-    setModalOpen(true);
-  };
-
-  const closeModal = (): void => {
-    setModalOpen(false);
-    setFormToCampus('');
-    setFormMedicine('');
-    setFormQuantity('');
-  };
+  const openModal = (): void => { setFormToCampus(''); setFormMedicine(''); setFormQuantity(''); setModalOpen(true); };
+  const closeModal = (): void => { setModalOpen(false); };
 
   const handleSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
     if (!campusId || submitting) return;
-
     setSubmitting(true);
     try {
       await api.post('/branch-requests', {
@@ -180,36 +145,73 @@ export function NurseInventoryRequestsPage() {
         medicine_id: formMedicine,
         quantity_requested: formQuantity,
       });
-
       void notifySuccess('Request sent to supplying campus.', 'Request Submitted');
       closeModal();
       await loadAll();
     } catch (err) {
       void notifyError(getErrorMessage(err, 'Unable to submit request.'), 'Request Failed');
-    } finally {
-      setSubmitting(false);
-    }
+    } finally { setSubmitting(false); }
   };
 
-  const handleApprove = async (request: BranchRequest): Promise<void> => {
+  const handleShip = async (request: BranchRequest): Promise<void> => {
     const confirmed = await Swal.fire({
       icon: 'question',
-      title: 'Approve request?',
-      html: `<p>Approve <strong>${request.quantity_requested}</strong> units of <strong>${request.medicine?.name}</strong>?</p>`,
+      title: 'Ship medicine?',
+      html: `<p>This will deduct <strong>${request.quantity_requested}</strong> units of <strong>${request.medicine?.name}</strong> from your stock.</p>`,
       showCancelButton: true,
-      confirmButtonText: 'Approve',
+      confirmButtonText: 'Ship Now',
       confirmButtonColor: '#16a34a',
       cancelButtonText: 'Cancel',
     });
-
     if (!confirmed.isConfirmed) return;
-
     try {
-      await api.patch(`/branch-requests/${request.id}/approve`);
-      void notifySuccess('Request approved.', 'Approved');
+      await api.patch(`/branch-requests/${request.id}/ship`);
+      void notifySuccess('Medicine shipped. Stock deducted from your campus.', 'Shipped');
       await loadAll();
     } catch (err) {
-      void notifyError(getErrorMessage(err, 'Unable to approve request.'), 'Approve Failed');
+      void notifyError(getErrorMessage(err, 'Unable to ship request.'), 'Ship Failed');
+    }
+  };
+
+  const handleReceive = async (request: BranchRequest): Promise<void> => {
+    const confirmed = await Swal.fire({
+      icon: 'question',
+      title: 'Confirm receipt?',
+      html: `<p>Confirm that <strong>${request.quantity_requested}</strong> units of <strong>${request.medicine?.name}</strong> arrived safely at your campus?</p>`,
+      showCancelButton: true,
+      confirmButtonText: 'Yes, received',
+      confirmButtonColor: '#16a34a',
+      cancelButtonText: 'Cancel',
+    });
+    if (!confirmed.isConfirmed) return;
+    try {
+      await api.patch(`/branch-requests/${request.id}/receive`);
+      void notifySuccess('Receipt confirmed. Please go to Inventory → Stocks to stock in the medicine.', 'Received');
+      await loadAll();
+    } catch (err) {
+      void notifyError(getErrorMessage(err, 'Unable to confirm receipt.'), 'Receive Failed');
+    }
+  };
+
+  // 🚨 RENAMED: "Mark as Stocked-In" → "Complete Request"
+  // The system does NOT auto-add stock. The nurse must go to Inventory → Stocks to manually create a batch.
+  const handleCompleteRequest = async (request: BranchRequest): Promise<void> => {
+    const confirmed = await Swal.fire({
+      icon: 'info',
+      title: 'Complete this request?',
+      html: `<p>Confirm that you have physically received <strong>${request.quantity_requested}</strong> units of <strong>${request.medicine?.name}</strong>.</p><p class="small" style="color:#a3224a; margin-top:0.5rem;"><strong>Important:</strong> After clicking Yes, you must go to <strong>Inventory → Stocks → Stock-In</strong> to manually add the batch details (expiration date, etc.) to your campus inventory.</p>`,
+      showCancelButton: true,
+      confirmButtonText: 'Yes, complete request',
+      confirmButtonColor: '#16a34a',
+      cancelButtonText: 'Cancel',
+    });
+    if (!confirmed.isConfirmed) return;
+    try {
+      await api.patch(`/branch-requests/${request.id}/mark-stocked-in`);
+      void notifySuccess('Request completed. Please go to Inventory → Stocks to manually stock in the medicine.', 'Completed');
+      await loadAll();
+    } catch (err) {
+      void notifyError(getErrorMessage(err, 'Unable to complete request.'), 'Update Failed');
     }
   };
 
@@ -225,13 +227,9 @@ export function NurseInventoryRequestsPage() {
       confirmButtonColor: '#dc2626',
       cancelButtonText: 'Cancel',
     });
-
     if (!isConfirmed) return;
-
     try {
-      await api.patch(`/branch-requests/${request.id}/reject`, {
-        reason: reason || '',
-      });
+      await api.patch(`/branch-requests/${request.id}/reject`, { reason: reason || '' });
       void notifySuccess('Request rejected.', 'Rejected');
       await loadAll();
     } catch (err) {
@@ -239,32 +237,8 @@ export function NurseInventoryRequestsPage() {
     }
   };
 
-  const handleComplete = async (request: BranchRequest): Promise<void> => {
-    const confirmed = await Swal.fire({
-      icon: 'question',
-      title: 'Mark as completed?',
-      text: 'This confirms the medicine has been received.',
-      showCancelButton: true,
-      confirmButtonText: 'Complete',
-      confirmButtonColor: '#16a34a',
-      cancelButtonText: 'Cancel',
-    });
-
-    if (!confirmed.isConfirmed) return;
-
-    try {
-      await api.patch(`/branch-requests/${request.id}/complete`);
-      void notifySuccess('Request completed.', 'Completed');
-      await loadAll();
-    } catch (err) {
-      void notifyError(getErrorMessage(err, 'Unable to complete request.'), 'Complete Failed');
-    }
-  };
-
   const onMenuClick = (item: MenuItem): void => {
-    if (item.path !== '/nurse/inventory/requests') {
-      navigate(item.path);
-    }
+    if (item.path !== '/nurse/inventory/requests') navigate(item.path);
   };
 
   return (
@@ -278,27 +252,18 @@ export function NurseInventoryRequestsPage() {
           </div>
         </div>
         <nav className="nurse-sidebar-nav" aria-label="Inventory navigation">
-              <div className="nurse-nav-item">
-                <button
-                  className="nurse-side-link back-to-dashboard"
-                  onClick={() => navigate(basePath === '/doctor/inventory' ? '/doctor' : '/nurse')}
-                  type="button"
-                >
-                  <ArrowLeft className="nurse-side-icon" size={18} strokeWidth={2.2} />
-                  <span className="nurse-side-label">Back to Dashboard</span>
-                </button>
-              </div>
-
-              {resolvedMenuItems.map((item) => {
+          <div className="nurse-nav-item">
+            <button className="nurse-side-link back-to-dashboard" onClick={() => navigate(basePath === '/doctor/inventory' ? '/doctor' : '/nurse')} type="button">
+              <ArrowLeft className="nurse-side-icon" size={18} strokeWidth={2.2} />
+              <span className="nurse-side-label">Back to Dashboard</span>
+            </button>
+          </div>
+          {resolvedMenuItems.map((item) => {
             const Icon = item.icon;
             const isActive = item.key === 'requests';
             return (
               <div className="nurse-nav-item" key={item.key}>
-                <button
-                  className={`nurse-side-link${isActive ? ' active' : ''}`}
-                  onClick={() => onMenuClick(item)}
-                  type="button"
-                >
+                <button className={`nurse-side-link${isActive ? ' active' : ''}`} onClick={() => onMenuClick(item)} type="button">
                   <Icon className="nurse-side-icon" size={18} strokeWidth={2.2} />
                   <span className="nurse-side-label">{item.label}</span>
                 </button>
@@ -316,12 +281,7 @@ export function NurseInventoryRequestsPage() {
               <p className="muted small">Request and manage medicine transfers between campuses.</p>
             </div>
             <div className="nurse-dashboard-actions">
-              <button
-                className="button ghost nurse-refresh-button"
-                onClick={() => void loadAll()}
-                type="button"
-                disabled={loading}
-              >
+              <button className="button ghost nurse-refresh-button" onClick={() => void loadAll()} type="button" disabled={loading}>
                 <RefreshCw className={`nurse-refresh-icon${loading ? ' spinning' : ''}`} size={16} strokeWidth={2.2} />
               </button>
               {!isDoctor && (
@@ -337,36 +297,13 @@ export function NurseInventoryRequestsPage() {
         <section className="panel">
           <div className="panel-head nurse-dashboard-consultation-head">
             <div className="nurse-dashboard-consultation-title-wrap" style={{ display: 'flex', gap: '0.5rem' }}>
-              <button
-                className={tab === 'incoming' ? 'button' : 'button ghost'}
-                onClick={() => setTab('incoming')}
-                type="button"
-              >
-                Incoming
-              </button>
-              <button
-                className={tab === 'outgoing' ? 'button' : 'button ghost'}
-                onClick={() => setTab('outgoing')}
-                type="button"
-              >
-                Outgoing
-              </button>
-              <button
-                className={tab === 'all' ? 'button' : 'button ghost'}
-                onClick={() => setTab('all')}
-                type="button"
-              >
-                All
-              </button>
+              <button className={tab === 'incoming' ? 'button' : 'button ghost'} onClick={() => setTab('incoming')} type="button">Incoming (Supplying)</button>
+              <button className={tab === 'outgoing' ? 'button' : 'button ghost'} onClick={() => setTab('outgoing')} type="button">Outgoing (Requesting)</button>
+              <button className={tab === 'all' ? 'button' : 'button ghost'} onClick={() => setTab('all')} type="button">All</button>
             </div>
             <label className="nurse-records-search nurse-dashboard-consultation-search">
               <Search className="nurse-dashboard-consultation-search-icon" size={16} strokeWidth={2.25} />
-              <input
-                placeholder="Search..."
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                aria-label="Search branch requests"
-              />
+              <input placeholder="Search..." value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Search branch requests" />
             </label>
           </div>
 
@@ -380,8 +317,8 @@ export function NurseInventoryRequestsPage() {
                 <thead>
                   <tr>
                     <th>Medicine</th>
-                    <th>From</th>
-                    <th>To</th>
+                    <th>Requesting Campus</th>
+                    <th>Supplying Campus</th>
                     <th>Quantity</th>
                     <th>Status</th>
                     <th>Requested</th>
@@ -390,9 +327,8 @@ export function NurseInventoryRequestsPage() {
                 </thead>
                 <tbody>
                   {filteredRequests.map((request) => {
-                    const isIncoming = campusId && request.to_campus_id === campusId;
-                    const isPending = request.status === 'pending';
-                    const isApproved = request.status === 'approved';
+                    const isSupplyingCampus = campusId === request.to_campus_id;
+                    const isRequestingCampus = campusId === request.from_campus_id;
 
                     return (
                       <tr key={request.id}>
@@ -400,40 +336,30 @@ export function NurseInventoryRequestsPage() {
                         <td>{request.from_campus?.name ?? `Campus ${request.from_campus_id}`}</td>
                         <td>{request.to_campus?.name ?? `Campus ${request.to_campus_id}`}</td>
                         <td>{request.quantity_requested}</td>
-                        <td>
-                          <StatusBadge status={request.status} />
-                        </td>
+                        <td><StatusBadge status={request.status} /></td>
                         <td>{formatDateTime(request.created_at)}</td>
                         <td>
                           <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'flex-end' }}>
-                            {isIncoming && isPending && (
+                            {isSupplyingCampus && request.status === 'pending' && (
                               <>
-                                <button
-                                  className="button ghost"
-                                  onClick={() => void handleApprove(request)}
-                                  title="Approve"
-                                  type="button"
-                                >
-                                  <CheckCircle2 size={16} strokeWidth={2.2} />
+                                <button className="button ghost" onClick={() => void handleShip(request)} title="Ship (deducts stock)" type="button">
+                                  <Send size={16} strokeWidth={2.2} />
                                 </button>
-                                <button
-                                  className="button ghost"
-                                  onClick={() => void handleReject(request)}
-                                  title="Reject"
-                                  type="button"
-                                >
+                                <button className="button ghost" onClick={() => void handleReject(request)} title="Reject" type="button">
                                   <XCircle size={16} strokeWidth={2.2} />
                                 </button>
                               </>
                             )}
-                            {isIncoming && isApproved && (
-                              <button
-                                className="button ghost"
-                                onClick={() => void handleComplete(request)}
-                                title="Complete"
-                                type="button"
-                              >
-                                <Send size={16} strokeWidth={2.2} />
+                            
+                            {isRequestingCampus && request.status === 'shipped' && (
+                              <button className="button ghost" onClick={() => void handleReceive(request)} title="Confirm Receipt" type="button">
+                                <CheckCircle2 size={16} strokeWidth={2.2} />
+                              </button>
+                            )}
+                            
+                            {isRequestingCampus && request.status === 'received' && (
+                              <button className="button ghost" onClick={() => void handleCompleteRequest(request)} title="Complete Request (Manual Stock-In Required)" type="button">
+                                <Package size={16} strokeWidth={2.2} />
                               </button>
                             )}
                           </div>
@@ -453,63 +379,30 @@ export function NurseInventoryRequestsPage() {
           <div className="modal-panel" onClick={(event) => event.stopPropagation()}>
             <div className="modal-head">
               <h3>New Branch Request</h3>
-              <button className="button ghost" onClick={closeModal} type="button">
-                <X size={18} strokeWidth={2.2} />
-              </button>
+              <button className="button ghost" onClick={closeModal} type="button"><X size={18} strokeWidth={2.2} /></button>
             </div>
-
             <form onSubmit={handleSubmit} className="modal-form">
               <label>
                 Supplying Campus
-                <select
-                  required
-                  value={formToCampus}
-                  onChange={(event) => setFormToCampus(event.target.value ? Number(event.target.value) : '')}
-                >
+                <select required value={formToCampus} onChange={(event) => setFormToCampus(event.target.value ? Number(event.target.value) : '')}>
                   <option value="">Select campus...</option>
-                  {campuses.map((campus) => (
-                    <option key={campus.id} value={campus.id}>
-                      {campus.name}
-                    </option>
-                  ))}
+                  {campuses.map((campus) => <option key={campus.id} value={campus.id}>{campus.name}</option>)}
                 </select>
               </label>
-
               <label>
                 Medicine
-                <select
-                  required
-                  value={formMedicine}
-                  onChange={(event) => setFormMedicine(event.target.value ? Number(event.target.value) : '')}
-                >
+                <select required value={formMedicine} onChange={(event) => setFormMedicine(event.target.value ? Number(event.target.value) : '')}>
                   <option value="">Select medicine...</option>
-                  {medicines.map((medicine) => (
-                    <option key={medicine.id} value={medicine.id}>
-                      {medicine.name} ({medicine.category})
-                    </option>
-                  ))}
+                  {medicines.map((medicine) => <option key={medicine.id} value={medicine.id}>{medicine.name} ({medicine.category})</option>)}
                 </select>
               </label>
-
               <label>
                 Quantity
-                <input
-                  type="number"
-                  required
-                  min={1}
-                  value={formQuantity}
-                  onChange={(event) => setFormQuantity(event.target.value ? Number(event.target.value) : '')}
-                  placeholder="e.g., 50"
-                />
+                <input type="number" required min={1} value={formQuantity} onChange={(event) => setFormQuantity(event.target.value ? Number(event.target.value) : '')} placeholder="e.g., 50" />
               </label>
-
               <div className="modal-actions">
-                <button type="button" className="button ghost" onClick={closeModal} disabled={submitting}>
-                  Cancel
-                </button>
-                <button type="submit" className="button" disabled={submitting}>
-                  {submitting ? 'Submitting...' : 'Send Request'}
-                </button>
+                <button type="button" className="button ghost" onClick={closeModal} disabled={submitting}>Cancel</button>
+                <button type="submit" className="button" disabled={submitting}>{submitting ? 'Submitting...' : 'Send Request'}</button>
               </div>
             </form>
           </div>

@@ -71,10 +71,12 @@ export interface PatientEnrollment {
 
 export interface Patient {
   id: number;
-  user_id: number;
+  user_id: number | null;
   campus_id?: number | null;
   department_id?: number | null;
   patient_number: string;
+  first_name?: string | null; // 🚨 ADDED for walk-ins
+  last_name?: string | null;  // 🚨 ADDED for walk-ins
   patient_type: string;
   patient_category?: string | null;
   sex: string;
@@ -190,6 +192,7 @@ export interface Consultation {
   patient_id: number;
   patient_enrollment_id?: number | null;
   nurse_id?: number | null;
+  campus_id?: number | null;  // 🚨 ADDED for walk-in campus logic
   consultation_type: string;
   status: string;
   chief_complaint: string;
@@ -219,6 +222,7 @@ export interface Consultation {
   patientEnrollment?: PatientEnrollment | null;
   nurse?: UserRecord | null;
   referral?: Referral | null;
+  campus?: LookupRecord | null; // 🚨 ADDED for walk-in campus display
   
   // 🚨 P4-3 FIX: Laravel serializes the relation as medical_record (snake_case)
   medical_record?: MedicalRecord | null;

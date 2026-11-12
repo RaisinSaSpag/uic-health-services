@@ -1,30 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
-  BarChart3, 
-  Printer, 
-  Sparkles, 
-  X, 
-  RefreshCw,
-  Stethoscope,
-  Users,
-  GraduationCap,
-  Briefcase,
-  Calendar,
-  ArrowLeft
+  BarChart3, Printer, Sparkles, X, RefreshCw, Stethoscope, Users, GraduationCap, Briefcase, Calendar, ArrowLeft
 } from 'lucide-react';
 import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  CartesianGrid,
-  PieChart,
-  Pie,
-  Cell,
-  Legend
+  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, PieChart, Pie, Cell, Legend
 } from 'recharts';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../lib/api';
@@ -49,71 +29,80 @@ export function NurseReportsPage() {
   const now = useMemo(() => new Date(), []);
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
+  const [activeTerm, setActiveTerm] = useState<any>(null);
+  const [useTermFilter, setUseTermFilter] = useState(true);
 
   const yearOptions = useMemo(() => {
     const current = now.getFullYear();
     return [current - 2, current - 1, current, current + 1];
   }, [now]);
 
+  useEffect(() => {
+    const loadTerm = async () => {
+      try {
+        const res = await api.get<any[]>('/academic-terms');
+        const active = res.data.find((t: any) => t.is_active);
+        setActiveTerm(active || null);
+      } catch {}
+    };
+    void loadTerm();
+  }, []);
+
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get<PaginatedResponse<Consultation>>('/consultations', { params: { per_page: 100 } });
+      const params: any = { per_page: 100 };
+      if (useTermFilter && activeTerm) {
+        params.date_from = activeTerm.start_date;
+        params.date_to = activeTerm.end_date;
+      } else {
+        const start = new Date(year, month - 1, 1);
+        const end = new Date(year, month, 0);
+        params.date_from = start.toISOString().split('T')[0];
+        params.date_to = end.toISOString().split('T')[0];
+      }
+      const res = await api.get<PaginatedResponse<Consultation>>('/consultations', { params });
       setConsultations(res.data.data);
     } catch (err) {
       void notifyError(getErrorMessage(err, 'Failed to load reports data.'), 'Error');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [month, year, activeTerm, useTermFilter]);
 
-  useEffect(() => { 
-    void loadData(); 
-  }, [loadData]);
-
-  const monthlyConsultations = useMemo(() => {
-    return consultations.filter(c => {
-      const d = new Date(c.submitted_at || c.created_at || '');
-      return d.getMonth() + 1 === month && d.getFullYear() === year;
-    });
-  }, [consultations, month, year]);
+  useEffect(() => { void loadData(); }, [loadData]);
 
   const topDiseases = useMemo(() => {
     const map = new Map<string, number>();
-    monthlyConsultations.forEach(c => {
-      if (c.diagnosis) {
-        map.set(c.diagnosis, (map.get(c.diagnosis) || 0) + 1);
-      }
+    consultations.forEach(c => {
+      if (c.diagnosis) map.set(c.diagnosis, (map.get(c.diagnosis) || 0) + 1);
     });
     return Array.from(map.entries())
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 5);
-  }, [monthlyConsultations]);
+  }, [consultations]);
 
   const demographics = useMemo(() => {
     let basic = 0, college = 0, employee = 0;
     const uniquePatients = new Set<number>();
-
-    monthlyConsultations.forEach(c => {
+    consultations.forEach(c => {
       if (!c.patient || uniquePatients.has(c.patient.id)) return;
       uniquePatients.add(c.patient.id);
-      
       if (c.patient.patient_type === 'employee') employee++;
       else if (c.patient.student_level === 'college') college++;
       else basic++;
     });
-
     return [
       { name: 'Basic Ed', value: basic },
       { name: 'College', value: college },
       { name: 'Employee', value: employee },
     ].filter(d => d.value > 0);
-  }, [monthlyConsultations]);
+  }, [consultations]);
 
-  const basicEdCount = useMemo(() => demographics.find(d => d.name === 'Basic Ed')?.value || 0, [demographics]);
-  const collegeCount = useMemo(() => demographics.find(d => d.name === 'College')?.value || 0, [demographics]);
-  const employeeCount = useMemo(() => demographics.find(d => d.name === 'Employee')?.value || 0, [demographics]);
+  const basicEdCount = demographics.find(d => d.name === 'Basic Ed')?.value || 0;
+  const collegeCount = demographics.find(d => d.name === 'College')?.value || 0;
+  const employeeCount = demographics.find(d => d.name === 'Employee')?.value || 0;
 
   const handlePrint = (): void => {
     setPrinting(true);
@@ -128,8 +117,7 @@ export function NurseReportsPage() {
     try {
       await new Promise(resolve => setTimeout(resolve, 1500));
       setAiSummary(
-        `For ${new Date(0, month - 1).toLocaleString('default', { month: 'long' })} ${year}, ` +
-        `the clinic recorded ${monthlyConsultations.length} total consultation(s). ` +
+        `The clinic recorded ${consultations.length} total consultation(s). ` +
         `The leading diagnosis was "${topDiseases[0]?.name || 'N/A'}" with ${topDiseases[0]?.count || 0} case(s). ` +
         `The majority of unique patients treated were from the ${demographics[0]?.name || 'N/A'} category.`
       );
@@ -166,24 +154,32 @@ export function NurseReportsPage() {
               <BarChart3 size={24} color="#d44974" />
               Monthly Clinic Reports
             </h1>
-            <p style={{ fontSize: '0.9rem', color: '#64748b', marginTop: '0.25rem' }}>
-              Analytics for <strong>{new Date(0, month - 1).toLocaleString('default', { month: 'long' })} {year}</strong>
-            </p>
           </div>
 
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '1rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: '#f1f5f9', padding: '0.5rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-              <Calendar size={16} color="#94a3b8" style={{ marginLeft: '0.5rem' }} />
-              <select value={month} onChange={(e) => setMonth(Number(e.target.value))} style={{ background: 'transparent', border: 'none', fontSize: '0.9rem', fontWeight: 500, color: '#334155', cursor: 'pointer', outline: 'none' }}>
-                {Array.from({ length: 12 }, (_, i) => (
-                  <option key={i + 1} value={i + 1}>{new Date(0, i).toLocaleString('default', { month: 'long' })}</option>
-                ))}
-              </select>
-              <span style={{ color: '#cbd5e1' }}>|</span>
-              <select value={year} onChange={(e) => setYear(Number(e.target.value))} style={{ background: 'transparent', border: 'none', fontSize: '0.9rem', fontWeight: 500, color: '#334155', cursor: 'pointer', outline: 'none' }}>
-                {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
-              </select>
-            </div>
+            {activeTerm ? (
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#fdf2f4', padding: '0.5rem 1rem', borderRadius: '8px', border: '1px solid #fbcfe8', color: '#a3224a', fontWeight: 600, fontSize: '0.875rem' }}>
+                <input type="checkbox" checked={useTermFilter} onChange={(e) => setUseTermFilter(e.target.checked)} />
+                {activeTerm.name}
+              </label>
+            ) : (
+              <span className="muted" style={{ fontSize: '0.875rem' }}>No active term.</span>
+            )}
+
+            {!useTermFilter && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: '#f1f5f9', padding: '0.5rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <Calendar size={16} color="#94a3b8" style={{ marginLeft: '0.5rem' }} />
+                <select value={month} onChange={(e) => setMonth(Number(e.target.value))} style={{ background: 'transparent', border: 'none', fontSize: '0.9rem', fontWeight: 500, cursor: 'pointer', outline: 'none' }}>
+                  {Array.from({ length: 12 }, (_, i) => (
+                    <option key={i + 1} value={i + 1}>{new Date(0, i).toLocaleString('default', { month: 'long' })}</option>
+                  ))}
+                </select>
+                <span style={{ color: '#cbd5e1' }}>|</span>
+                <select value={year} onChange={(e) => setYear(Number(e.target.value))} style={{ background: 'transparent', border: 'none', fontSize: '0.9rem', fontWeight: 500, cursor: 'pointer', outline: 'none' }}>
+                  {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
+                </select>
+              </div>
+            )}
 
             <button onClick={handleGenerateSummary} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', backgroundColor: '#fdf2f8', color: '#be185d', borderRadius: '8px', border: '1px solid #fbcfe8', fontWeight: 500, cursor: 'pointer' }}>
               <Sparkles size={16} /> AI Summary
@@ -270,18 +266,7 @@ function TopDiseasesChartCard({ data }: { data: { name: string; count: number }[
             <BarChart data={data} layout="vertical" margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
               <XAxis type="number" tick={{ fontSize: 12, fill: '#64748b' }} axisLine={false} tickLine={false} />
-              
-              {/* 🚨 FIX: Added tickFormatter to truncate long labels */}
-              <YAxis 
-                dataKey="name" 
-                type="category" 
-                width={140} 
-                tick={{ fontSize: 12, fill: '#475569' }} 
-                axisLine={false} 
-                tickLine={false}
-                tickFormatter={(value: string) => value.length > 18 ? `${value.substring(0, 18)}…` : value}
-              />
-              
+              <YAxis dataKey="name" type="category" width={140} tick={{ fontSize: 12, fill: '#475569' }} axisLine={false} tickLine={false} tickFormatter={(value: string) => value.length > 18 ? `${value.substring(0, 18)}…` : value} />
               <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }} />
               <Bar dataKey="count" fill="#d44974" radius={[0, 4, 4, 0]} barSize={20} />
             </BarChart>

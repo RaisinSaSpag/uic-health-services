@@ -1,19 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-// 🚨 P4-13 FIX: Removed unused Download import
 import { ArrowLeft, Building2, FileText } from 'lucide-react';
 import { 
-  ResponsiveContainer, 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  Tooltip, 
-  CartesianGrid,
-  PieChart,
-  Pie,
-  Cell,
-  Legend
+  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, PieChart, Pie, Cell, Legend
 } from 'recharts';
 import { api } from '../lib/api';
 import { notifyError } from '../lib/alerts';
@@ -26,29 +15,48 @@ export function CoordinatorCampusReportPage() {
 
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [activeTerm, setActiveTerm] = useState<any>(null);
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [year, setYear] = useState(new Date().getFullYear());
+  const [useTermFilter, setUseTermFilter] = useState(true);
 
   const yearOptions = useMemo(() => {
     const current = new Date().getFullYear();
     return [current - 2, current - 1, current, current + 1];
   }, []);
 
+  useEffect(() => {
+    const loadTerm = async () => {
+      try {
+        const res = await api.get<any[]>('/academic-terms');
+        const active = res.data.find((t: any) => t.is_active);
+        setActiveTerm(active || null);
+      } catch {}
+    };
+    void loadTerm();
+  }, []);
+
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get(`/reports/campus-detail/${campusCode}?month=${month}&year=${year}`);
+      const params: any = {};
+      if (useTermFilter && activeTerm) {
+        params.date_from = activeTerm.start_date;
+        params.date_to = activeTerm.end_date;
+      } else {
+        params.month = month;
+        params.year = year;
+      }
+      const res = await api.get(`/reports/campus-detail/${campusCode}`, { params });
       setData(res.data);
     } catch (err) {
       void notifyError('Failed to load campus detailed report.');
     } finally {
       setLoading(false);
     }
-  }, [campusCode, month, year]);
+  }, [campusCode, month, year, activeTerm, useTermFilter]);
 
-  useEffect(() => {
-    void loadData();
-  }, [loadData]);
+  useEffect(() => { void loadData(); }, [loadData]);
 
   if (loading) return <div className="page">Loading detailed report...</div>;
   if (!data) return <div className="page">No data found for this campus.</div>;
@@ -60,13 +68,9 @@ export function CoordinatorCampusReportPage() {
 
   return (
     <div className="page" style={{ padding: '1.5rem' }}>
-      {/* Header */}
       <header style={{ backgroundColor: 'white', borderRadius: '12px', padding: '1.5rem', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
-          <button 
-            onClick={() => navigate('/coordinator')}
-            style={{ background: 'none', border: 'none', color: '#64748b', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', marginBottom: '0.5rem', padding: 0 }}
-          >
+          <button onClick={() => navigate('/coordinator')} style={{ background: 'none', border: 'none', color: '#64748b', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', marginBottom: '0.5rem', padding: 0 }}>
             <ArrowLeft size={16} /> Back to Command Center
           </button>
           <h1 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
@@ -75,22 +79,32 @@ export function CoordinatorCampusReportPage() {
           </h1>
         </div>
 
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-          <select value={month} onChange={(e) => setMonth(Number(e.target.value))} style={{ padding: '0.5rem', borderRadius: '6px', border: '1px solid #d1d5db', background: 'white' }}>
-            {Array.from({ length: 12 }, (_, i) => (
-              <option key={i + 1} value={i + 1}>{new Date(0, i).toLocaleString('default', { month: 'long' })}</option>
-            ))}
-          </select>
-          <select value={year} onChange={(e) => setYear(Number(e.target.value))} style={{ padding: '0.5rem', borderRadius: '6px', border: '1px solid #d1d5db', background: 'white' }}>
-            {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          {activeTerm ? (
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#fdf2f4', padding: '0.5rem 1rem', borderRadius: '8px', border: '1px solid #fbcfe8', color: '#a3224a', fontWeight: 600, fontSize: '0.875rem' }}>
+              <input type="checkbox" checked={useTermFilter} onChange={(e) => setUseTermFilter(e.target.checked)} />
+              Filter by Term: {activeTerm.name}
+            </label>
+          ) : (
+            <span className="muted" style={{ fontSize: '0.875rem' }}>No active Academic Term set.</span>
+          )}
+
+          {!useTermFilter && (
+            <>
+              <select value={month} onChange={(e) => setMonth(Number(e.target.value))} style={{ padding: '0.5rem', borderRadius: '6px', border: '1px solid #d1d5db' }}>
+                {Array.from({ length: 12 }, (_, i) => (
+                  <option key={i + 1} value={i + 1}>{new Date(0, i).toLocaleString('default', { month: 'long' })}</option>
+                ))}
+              </select>
+              <select value={year} onChange={(e) => setYear(Number(e.target.value))} style={{ padding: '0.5rem', borderRadius: '6px', border: '1px solid #d1d5db' }}>
+                {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </>
+          )}
         </div>
       </header>
 
-      {/* Main Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginBottom: '1.5rem' }}>
-        
-        {/* Demographics Chart */}
         <div style={{ backgroundColor: 'white', padding: '1.5rem', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
           <h3 style={{ fontSize: '1rem', fontWeight: 600, color: '#0f172a', marginBottom: '1rem' }}>Patient Demographics</h3>
           <div style={{ height: '300px' }}>
@@ -108,7 +122,6 @@ export function CoordinatorCampusReportPage() {
           </div>
         </div>
 
-        {/* Top Diseases Chart */}
         <div style={{ backgroundColor: 'white', padding: '1.5rem', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
           <h3 style={{ fontSize: '1rem', fontWeight: 600, color: '#0f172a', marginBottom: '1rem' }}>Top Diagnoses</h3>
           <div style={{ height: '300px' }}>
@@ -125,7 +138,6 @@ export function CoordinatorCampusReportPage() {
         </div>
       </div>
 
-      {/* Detailed Table */}
       <div style={{ backgroundColor: 'white', padding: '1.5rem', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
         <h3 style={{ fontSize: '1rem', fontWeight: 600, color: '#0f172a', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <FileText size={18} color="#d44974" /> Recent Consultations

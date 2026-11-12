@@ -119,6 +119,17 @@ function latestConsultationTimestamp(consultation: Consultation): number {
   return Number.isNaN(timestamp) ? 0 : timestamp;
 }
 
+// 🚨 HELPER: Display patient name safely
+function getPatientDisplayName(patient: Patient): string {
+  if (patient.user) {
+    return userDisplayName(patient.user);
+  }
+  if (patient.first_name || patient.last_name) {
+    return `${patient.first_name ?? ''} ${patient.last_name ?? ''}`.trim();
+  }
+  return 'Unknown Patient';
+}
+
 export function NursePatientDetailPage() {
   const { user } = useAuth();
   const location = useLocation();
@@ -292,7 +303,6 @@ export function NursePatientDetailPage() {
       { label: 'Final Diagnosis', value: (selectedConsultation as any).medical_record?.final_diagnosis || 'N/A' },
       { label: 'Treatment Plan', value: (selectedConsultation as any).medical_record?.treatment_plan || 'N/A' },
       { label: 'Prescription', value: (selectedConsultation as any).medical_record?.prescription || selectedConsultation.referral?.prescription || 'N/A' },
-      // 🚨 NEW: Display dispensed medicines if the backend returns them
       { 
         label: 'Dispensed Medicines', 
         value: (selectedConsultation as any).medicine_stock_outs?.length > 0 
@@ -360,7 +370,7 @@ export function NursePatientDetailPage() {
         <section className="panel nurse-patient-detail-page">
           <div className="nurse-patient-detail-head">
             <div>
-              <h2>Search {patientType === 'student' ? 'Student' : 'Employee'}: {patient ? userDisplayName(patient.user) : 'Patient'}</h2>
+              <h2>Search {patientType === 'student' ? 'Student' : 'Employee'}: {patient ? getPatientDisplayName(patient) : 'Patient'}</h2>
             </div>
             <div className="action-row">
               <button aria-label="Back to records" className="button ghost nurse-patient-back-icon-button" onClick={() => navigate(`/nurse/records/${patientType}`)} title="Back to records" type="button">
@@ -380,9 +390,18 @@ export function NursePatientDetailPage() {
                   <CircleUserRound className="nurse-avatar-icon" size={84} strokeWidth={1.4} />
                 </div>
                 <div className="nurse-patient-summary-main">
-                  <h3>{userDisplayName(patient.user)}</h3>
-                  <p>{patientType === 'student' ? 'Student' : 'Employee'} · {normalizeText(patient.department?.name)}</p>
-                  <p>Campus: {patient.campus?.name ?? 'N/A'} · Profile Type: {patient.student_level ? normalizeText(patient.student_level) : normalizeText(patient.patient_type)}</p>
+                  <h3>{getPatientDisplayName(patient)}</h3>
+                  <p>
+                    {patientType === 'student' ? 'Student' : 'Employee'}
+                    {patient.grade_level && ` · ${patient.grade_level}`}
+                    {patient.section && ` - ${patient.section}`}
+                    {patient.course_program && ` · ${patient.course_program}`}
+                    {patient.year_level && ` - Year ${patient.year_level}`}
+                    {patient.department?.name && ` · ${patient.department.name}`}
+                  </p>
+                  <p>
+                    Campus: {patient.campus?.name ?? 'N/A'} · Profile Type: {patient.student_level ? normalizeText(patient.student_level) : normalizeText(patient.patient_type)}
+                  </p>
                 </div>
                 
                 <div className="nurse-patient-summary-actions" style={{ display: 'flex', gap: '0.5rem' }}>
@@ -528,7 +547,7 @@ export function NursePatientDetailPage() {
                           <p className="nurse-consultation-spotlight-kicker">Consultation Spotlight</p>
                           <h4>{selectedConsultationSequence ? `Patient Consultation ${selectedConsultationSequence}` : 'Patient Consultation'}</h4>
                           <p className="nurse-consultation-spotlight-subtitle">
-                            {(patient && userDisplayName(patient.user)) || 'Selected patient'} · {consultationDateLabel(selectedConsultation)}
+                            {(patient && getPatientDisplayName(patient)) || 'Selected patient'} · {consultationDateLabel(selectedConsultation)}
                           </p>
                         </div>
                         <button className="button ghost nurse-consultation-spotlight-close" onClick={closeConsultationModal} type="button">Close</button>

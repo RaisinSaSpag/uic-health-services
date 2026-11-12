@@ -113,7 +113,9 @@ class BranchRequestController extends Controller
     }
 
     /**
-     * 🚨 STEP 3: Requesting campus marks it as stocked in (finalizes the request)
+     * 🚨 STEP 3: Requesting campus manually stocks in the medicine.
+     * This simply marks the request as completed. The nurse must then manually
+     * create a stock-in batch via the Inventory page.
      */
     public function markStockedIn(Request $request, BranchRequest $branchRequest): JsonResponse
     {

@@ -52,7 +52,6 @@ class ConsultationController extends Controller
         $consultationType = (string) $request->input('consultation_type');
         $isTelemed = $consultationType === 'telemed';
 
-        // 🚨 Telemed ALWAYS requires a referral to a doctor
         $isReferral = $isTelemed || (filter_var(
             $request->input('referred_to_doctor'),
             FILTER_VALIDATE_BOOLEAN,
@@ -72,26 +71,9 @@ class ConsultationController extends Controller
             'chief_complaint' => ['required', 'string', 'max:1000'],
             'symptoms' => ['nullable', 'string', 'max:2000'],
 
-            // 🚨 Diagnosis is now always optional since we removed it from the UI
-            'diagnosis' => [
-                'nullable',
-                'string',
-                'max:255',
-            ],
-
-            'remarks' => [
-                Rule::requiredIf($isReferral),
-                'nullable',
-                'string',
-                'max:3000',
-            ],
-
-            // 🚨 Added treatment_plan to accept the new frontend field
-            'treatment_plan' => [
-                'nullable',
-                'string',
-                'max:3000',
-            ],
+            'diagnosis' => ['nullable', 'string', 'max:255'],
+            'remarks' => [Rule::requiredIf($isReferral), 'nullable', 'string', 'max:3000'],
+            'treatment_plan' => ['nullable', 'string', 'max:3000'],
 
             'referred_to_doctor' => ['nullable', 'boolean'],
             'is_telemed' => ['nullable', 'boolean'],
@@ -99,7 +81,6 @@ class ConsultationController extends Controller
             'referral_notes' => ['nullable', 'string', 'max:3000'],
         ]);
 
-        // Force the referred_to_doctor flag to true for telemed, just to be safe.
         if ($isTelemed) {
             $validated['referred_to_doctor'] = true;
             $validated['is_telemed'] = true;
@@ -107,7 +88,6 @@ class ConsultationController extends Controller
 
         try {
             $consultation = $this->consultationService->create($request->user(), $validated);
-
             return response()->json($consultation, 201);
         } catch (RuntimeException $exception) {
             return response()->json(['message' => $exception->getMessage()], 422);
@@ -131,19 +111,14 @@ class ConsultationController extends Controller
      */
     public function update(Request $request, Consultation $consultation): JsonResponse
     {
+        // 🚨 FIX: The update method needs its own validation rules (action, summary, etc.)
+        // The previous file was incorrectly reusing the index() filters.
         $validated = $request->validate([
             'action' => ['required', 'in:start,triage,complete,cancel'],
             'triage_notes' => ['nullable', 'string', 'max:2000'],
             'referred_to_doctor' => ['nullable', 'boolean'],
             'summary' => ['nullable', 'string', 'max:3000'],
-            
-            // 🚨 ALLOW CUSTOM "OTHER" TEXT
-            'final_diagnosis' => [
-                'nullable',
-                'string',
-                'max:255',
-            ],
-            
+            'final_diagnosis' => ['nullable', 'string', 'max:255'],
             'treatment_plan' => ['nullable', 'string', 'max:3000'],
             'prescription' => ['nullable', 'string', 'max:3000'],
             'follow_up_date' => ['nullable', 'date'],

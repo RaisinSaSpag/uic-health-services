@@ -92,8 +92,8 @@ export function FinalizeConsultationModal({ isOpen, onClose, consultation, onSuc
       const medicalRecord = (consultation as any).medical_record;
       
       await api.patch(`/consultations/${consultation.id}`, {
-        action: 'complete',
-        summary: medicalRecord?.summary || 'Completed via referral',
+        action: 'complete', // 🚨 CRITICAL FIX: Backend requires this key to route the action
+        summary: medicalRecord?.summary || 'Consultation finalized by nurse',
         final_diagnosis: medicalRecord?.final_diagnosis || 'See doctor notes',
         treatment_plan: medicalRecord?.treatment_plan || 'See doctor notes',
         prescription: medicalRecord?.prescription || null,
